@@ -1,0 +1,5 @@
+# Per-tab MCP poller handle. A live position belongs to one market the way
+# the feed link and the deal recorder do; folding it into paper would mix
+# a venue ticket with the simulator.
+app::Tab +1
+!budget +1

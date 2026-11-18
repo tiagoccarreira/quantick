@@ -49,8 +49,8 @@ const CAPSULE_FRAME_Y_PX: f32 = 4.0;
 pub const CAPSULE_SLOT_HEIGHT_PX: f32 = 20.0;
 /// A floating capsule's height, which the tape's seam plates keep.
 pub const CAPSULE_HEIGHT_PX: f32 = CAPSULE_SLOT_HEIGHT_PX + 2.0 * CAPSULE_FRAME_Y_PX;
-/// The most a capsule holds: a sample and four layers.
-const CAPSULE_MAX_ITEMS: usize = 5;
+/// The most a capsule holds: a sample and five layers.
+const CAPSULE_MAX_ITEMS: usize = 6;
 
 /// The sample's diameter at the smallest scale, in points.
 const SAMPLE_MIN_DIAMETER_PX: f32 = 6.0;
@@ -69,17 +69,19 @@ pub enum LayerToggle {
     Heatmap,
     Footprint,
     LiveStrip,
+    VenuePosition,
     TapeBubbles,
     TapeHeatmap,
 }
 
 impl LayerToggle {
     /// Every toggle, left to right.
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::Bubbles,
         Self::Heatmap,
         Self::Footprint,
         Self::LiveStrip,
+        Self::VenuePosition,
         Self::TapeBubbles,
         Self::TapeHeatmap,
     ];
@@ -93,6 +95,7 @@ impl LayerToggle {
             Self::Heatmap => ChartLayer::Heatmap,
             Self::Footprint => ChartLayer::Footprint,
             Self::LiveStrip => ChartLayer::LiveStrip,
+            Self::VenuePosition => ChartLayer::VenuePosition,
             Self::TapeBubbles => ChartLayer::TapeBubbles,
             Self::TapeHeatmap => ChartLayer::TapeHeatmap,
         }
@@ -106,9 +109,16 @@ impl LayerToggle {
             Self::Heatmap => "L2",
             Self::Footprint => "Footprint",
             Self::LiveStrip => "Strip",
+            Self::VenuePosition => "Position",
             Self::TapeBubbles => "Tape bubbles",
             Self::TapeHeatmap => "Tape L2",
         }
+    }
+
+    /// Shown disabled, with the block's hover, instead of leaving a hole.
+    #[must_use]
+    pub fn stays_when_blocked(self) -> bool {
+        matches!(self, Self::VenuePosition)
     }
 }
 
@@ -677,7 +687,7 @@ pub enum CapsuleSide {
 
 impl CapsuleSide {
     /// The layers this side's capsule switches, left to right. The trail's ends
-    /// with the strip, against the divider the strip stands beside.
+    /// with the account position, against the divider the strip stands beside.
     #[must_use]
     pub fn toggles(self) -> &'static [LayerToggle] {
         match self {
@@ -686,6 +696,7 @@ impl CapsuleSide {
                 LayerToggle::Heatmap,
                 LayerToggle::Footprint,
                 LayerToggle::LiveStrip,
+                LayerToggle::VenuePosition,
             ],
             Self::Tape => &[LayerToggle::TapeBubbles, LayerToggle::TapeHeatmap],
             Self::Time => &[LayerToggle::Footprint],
@@ -745,7 +756,7 @@ impl Capsule {
         let mut slots = items.iter_mut();
         for &toggle in side.toggles() {
             let glyph = glyph(toggle);
-            if glyph.blocked.is_some() {
+            if glyph.blocked.is_some() && !toggle.stays_when_blocked() {
                 continue;
             }
             if let Some(slot) = slots.next() {
@@ -880,6 +891,7 @@ mod tests {
                 "L2",
                 "Footprint",
                 "Strip",
+                "Position",
                 "Tape bubbles",
                 "Tape L2"
             ]
@@ -898,6 +910,10 @@ mod tests {
             (
                 HeaderControl::Layer(LayerToggle::LiveStrip),
                 "layer.live_strip",
+            ),
+            (
+                HeaderControl::Layer(LayerToggle::VenuePosition),
+                "layer.venue_position",
             ),
             (
                 HeaderControl::Layer(LayerToggle::TapeBubbles),
@@ -1221,7 +1237,8 @@ mod tests {
                 "sample.candle",
                 "layer.heatmap",
                 "layer.footprint",
-                "layer.live_strip"
+                "layer.live_strip",
+                "layer.venue_position"
             ]
         );
         let tape = Capsule::of(CapsuleSide::Tape, on, Some(1.0));
@@ -1249,7 +1266,8 @@ mod tests {
                 "layer.bubbles",
                 "sample.candle",
                 "layer.footprint",
-                "layer.live_strip"
+                "layer.live_strip",
+                "layer.venue_position"
             ]
         );
         let no_volume = |toggle| {
@@ -1290,15 +1308,42 @@ mod tests {
         );
     }
 
-    /// The trail's capsule holds four glyphs and the sample with clear air between
+    /// The trail's capsule holds five glyphs and the sample with clear air between
     /// them, and a lead-in as wide at either end: 20 px glyph slots on a 26 px pitch.
     #[test]
     fn a_capsule_measures_its_slots() {
         let on = |toggle| glyph(toggle, true, None);
         let capsule = Capsule::of(CapsuleSide::Candles, on, Some(1.0));
-        let width = 4.0 * GLYPH_SLOT_PX + SAMPLE_SLOT_PX + 6.0 * SLOT_GAP_PX;
+        let width = 5.0 * GLYPH_SLOT_PX + SAMPLE_SLOT_PX + 7.0 * SLOT_GAP_PX;
         assert_eq!(capsule.width_px(), width);
         assert_eq!(GLYPH_SLOT_PX + SLOT_GAP_PX, 26.0, "the pitch");
-        assert_eq!(capsule.width_px(), 140.0);
+        assert_eq!(capsule.width_px(), 166.0);
+    }
+
+    /// The position glyph stays when the source has no account, so the hover
+    /// can say why instead of the control vanishing.
+    #[test]
+    fn a_blocked_position_glyph_stays_in_the_capsule() {
+        let none = |toggle| {
+            glyph(
+                toggle,
+                true,
+                matches!(toggle, LayerToggle::VenuePosition)
+                    .then_some(quantick_layers::blocks::NO_ACCOUNT),
+            )
+        };
+        let ids = ids(&Capsule::of(CapsuleSide::Candles, none, Some(1.0)));
+        assert!(ids.contains(&"layer.venue_position".to_owned()));
+        assert_eq!(
+            Capsule::of(CapsuleSide::Candles, none, Some(1.0))
+                .items()
+                .find_map(|item| match item {
+                    CapsuleItem::Layer(glyph) if glyph.toggle == LayerToggle::VenuePosition => {
+                        Some(glyph.click())
+                    }
+                    _ => None,
+                }),
+            Some(None)
+        );
     }
 }

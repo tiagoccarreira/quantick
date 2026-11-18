@@ -1,0 +1,6 @@
+# Toolbar venue entry/close/reverse and execution-target switch land on
+# QuantickApp through the chrome toolbar port (apply_toolbar_action). The
+# write path stays behind AccountLink::submit; this raise covers the
+# window-side dispatch that routes Prod|Demo presses into that port.
+QuantickApp +113
+!budget +113

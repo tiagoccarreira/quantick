@@ -772,6 +772,7 @@ fn a_background_tabs_acknowledgement_travels_and_names_its_market() {
         .show_toast("SIM: stop filled".to_owned());
     frame_tail::settle_paper_panels(
         &mut app.runtime.tabs,
+        &app.config,
         &mut app.surfaces.toast,
         Instant::now(),
     );

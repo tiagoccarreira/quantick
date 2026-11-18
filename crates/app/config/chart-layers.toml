@@ -62,6 +62,7 @@ pointer_time = true
 # layers are switched apart on purpose, because hiding trade history must never
 # hide the position you are in.
 paper_trading = true
+venue_position = true
 trade_paint = true
 drawings = true
 

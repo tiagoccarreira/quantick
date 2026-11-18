@@ -108,6 +108,7 @@ fn each_layer_switch_moves_exactly_one_owner() {
         (ChartLayer::DaySeparator, true),
         (ChartLayer::Crosshair, true),
         (ChartLayer::PaperTrading, true),
+        (ChartLayer::VenuePosition, true),
         (ChartLayer::Drawings, true),
     ] {
         assert_eq!(
@@ -1243,6 +1244,8 @@ fn a_layer_the_source_cannot_draw_says_why_in_a_code_not_a_sentence() {
                 open_interest: false,
                 funding: false,
                 spot_perp_pair: false,
+                open_positions: false,
+                mcp_configured: false,
             }),
             commands: cmd_tx,
             replay: None,
@@ -1336,6 +1339,7 @@ fn the_header_controls_are_listed_the_way_the_trader_reads_them() {
             "layer.heatmap",
             "layer.footprint",
             "layer.live_strip",
+            "layer.venue_position",
             "tape.window",
             "layer.tape_bubbles",
             "layer.tape_heatmap",

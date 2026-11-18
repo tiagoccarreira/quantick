@@ -1,0 +1,4 @@
+# +166: the generated hook-registry row for QUANTICK_MT5_MCP_TOKEN, the
+# operator token that paints the MetaTrader account-position overlay; its
+# prose is already one clause.
+.claude/skills/ui-harness/ +166

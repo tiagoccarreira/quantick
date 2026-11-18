@@ -72,6 +72,13 @@ pub(super) const ROWS: &[UiBehaviour] = &[
         mapping: capability!("session.journal.set"),
     },
     UiBehaviour {
+        id: "trade.execution.target.set",
+        title: "Choose where Buy/Sell go: Sim or Prod/Demo",
+        reach: "toolbar trade group target chips",
+        keys: &[(Source::ToolbarAction, "SetExecutionTarget")],
+        mapping: capability!("trade.order.place"),
+    },
+    UiBehaviour {
         id: "trade.market.buy",
         title: "Buy at market, simulated",
         reach: "toolbar trade group, Trading panel, Shift+B",
@@ -89,6 +96,20 @@ pub(super) const ROWS: &[UiBehaviour] = &[
             (Source::ToolbarAction, "PaperSell"),
             (Source::Hotkey, "PAPER_SELL_SHORTCUT"),
         ],
+        mapping: capability!("trade.order.place"),
+    },
+    UiBehaviour {
+        id: "trade.venue.buy",
+        title: "Buy through the connected MT5 account",
+        reach: "toolbar trade group while Prod or Demo is selected",
+        keys: &[(Source::ToolbarAction, "VenueBuy")],
+        mapping: capability!("trade.order.place"),
+    },
+    UiBehaviour {
+        id: "trade.venue.sell",
+        title: "Sell through the connected MT5 account",
+        reach: "toolbar trade group while Prod or Demo is selected",
+        keys: &[(Source::ToolbarAction, "VenueSell")],
         mapping: capability!("trade.order.place"),
     },
     UiBehaviour {
@@ -116,6 +137,13 @@ pub(super) const ROWS: &[UiBehaviour] = &[
         mapping: capability!("trade.order.place"),
     },
     UiBehaviour {
+        id: "trade.venue.close",
+        title: "Close every open MT5 ticket on the chart symbol",
+        reach: "toolbar trade group while Prod or Demo is selected",
+        keys: &[(Source::ToolbarAction, "VenueClose")],
+        mapping: capability!("trade.order.place"),
+    },
+    UiBehaviour {
         id: "trade.position.flatten",
         title: "Close the position and cancel every working order",
         reach: "Trading panel, Shift+F",
@@ -130,6 +158,13 @@ pub(super) const ROWS: &[UiBehaviour] = &[
             (Source::Hotkey, "PAPER_REVERSE_SHORTCUT"),
             (Source::ToolbarAction, "PaperReverse"),
         ],
+        mapping: capability!("trade.position.reverse"),
+    },
+    UiBehaviour {
+        id: "trade.venue.reverse",
+        title: "Close the open MT5 tickets and open the other way at market",
+        reach: "toolbar trade group while Prod or Demo is selected",
+        keys: &[(Source::ToolbarAction, "VenueReverse")],
         mapping: capability!("trade.position.reverse"),
     },
     UiBehaviour {

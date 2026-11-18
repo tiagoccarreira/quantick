@@ -5,6 +5,7 @@ use eframe::egui;
 pub(super) const PACKAGE: Package = Package {
     layers: &[
         quantick_layers::ChartLayer::PaperTrading,
+        quantick_layers::ChartLayer::VenuePosition,
         quantick_layers::ChartLayer::TradePaint,
     ],
     contributions: &[Contribution::Trades(trades), Contribution::Paper(paper)],

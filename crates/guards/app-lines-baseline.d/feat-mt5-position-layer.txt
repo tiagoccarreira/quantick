@@ -1,0 +1,6 @@
+# The MetaTrader account overlay: Streamable HTTP poller, latest-wins snapshot,
+# badge and entry line. Engine forbids network; the feed crate is the tick path
+# and does not speak MCP. The only consumer is the chart overlay, so the module
+# sits beside the painter rather than opening a crate nobody else would import.
+crates/app +783
+!budget +783

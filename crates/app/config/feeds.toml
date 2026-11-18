@@ -243,6 +243,12 @@ side_source = "tick_rule"
 bridge_autostart = true
 bridge_command = ["python", "bridge/mt5/quantick_bridge.py"]
 
+# Local MetaTrader MCP (Streamable HTTP) for the account-position overlay.
+# The URL is the process already running on this machine; the token is empty
+# here so it is never committed. Set `mcp_token` in `quantick.toml` or the
+# `QUANTICK_MT5_MCP_TOKEN` environment variable.
+mcp_url = "http://127.0.0.1:22346/mcp"
+
 # ---------------------------------------------------------------------------
 # Per-symbol ports — how quantick charts more than one MT5 symbol at a time.
 #

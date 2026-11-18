@@ -17,6 +17,10 @@ pub struct LayerFacts {
     pub depth_visible: bool,
     pub tick_bars: bool,
     pub native_candle_prices: bool,
+    /// The running source can report the operator's open positions.
+    pub open_positions: bool,
+    /// A token is in hand to ask the account MCP.
+    pub mcp_configured: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -168,6 +172,15 @@ impl LayerState {
             Requirement::Volume => (!facts.traded_volume).then_some(blocks::NO_TRADED_VOLUME),
             Requirement::BookOrVolume => (!facts.book_capture && !facts.traded_volume)
                 .then_some(blocks::NO_BOOK_AND_NO_VOLUME),
+            Requirement::Account => {
+                if !facts.open_positions {
+                    Some(blocks::NO_ACCOUNT)
+                } else if !facts.mcp_configured {
+                    Some(blocks::NO_MCP_TOKEN)
+                } else {
+                    None
+                }
+            }
         };
         missing
             .or_else(|| {

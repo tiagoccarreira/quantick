@@ -207,7 +207,7 @@ pub(super) mod probe {
         let mut pane = installed();
         let style = ChartStyle::default();
         let catalog = pane.layers.registry();
-        assert_eq!(catalog.layers().len(), 28);
+        assert_eq!(catalog.layers().len(), ChartLayer::ALL.len() + 1);
         let discovered = catalog.resolve("test_probe").unwrap();
         assert_eq!(discovered.label(), "Probe");
         assert!(!pane.layer_visible(discovered, &style));

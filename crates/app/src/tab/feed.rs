@@ -169,8 +169,10 @@ impl Tab {
     ///
     /// Idempotent and cheap, so the frame loop can call it as a heartbeat on
     /// top of the lifecycle calls: already recording costs one bool read, and
-    /// a replay costs one more `Option` check.
+    /// a replay costs one more `Option` check. Also keeps the account poller
+    /// matched to this tab's source and token.
     pub fn ensure_book_capture(&mut self, config: &AppConfig) {
+        self.sync_account_poller(config);
         if self.tape().enabled() || !self.capabilities(config).book_capture {
             return;
         }
@@ -355,6 +357,24 @@ impl Tab {
         self.apply_asset_bubbles_after_switch(config);
     }
 
+    /// Start or stop the account MCP poller so it tracks this tab's source.
+    pub fn sync_account_poller(&mut self, config: &AppConfig) {
+        let source = *self.link.feed_capabilities.borrow();
+        let want = source.open_positions
+            && self.link.replay.is_none()
+            && crate::account::resolve_token(&config.metatrader).is_some();
+        if !want {
+            self.account.link = None;
+            return;
+        }
+        match &self.account.link {
+            Some(link) => link.set_symbol(self.symbol.clone()),
+            None => {
+                self.account.link = crate::account::spawn(&config.metatrader, self.symbol.clone());
+            }
+        }
+    }
+
     /// Bring the arrived-at asset's own bubble settings on screen, filing the
     /// leaving asset's edits first. A hop inside one asset (`WIN$N` to
     /// `WINV26`) keeps what is on screen, edits included.
@@ -500,7 +520,9 @@ impl Tab {
                 // lost to a momentarily full channel heals on the next frame
                 // instead of leaving the session silently unrecorded. Free
                 // while it is running: one bool read and an early return.
-                TabDrainStage::BookCaptureHeartbeat => self.ensure_book_capture(config),
+                TabDrainStage::BookCaptureHeartbeat => {
+                    self.ensure_book_capture(config);
+                }
                 // The window's switches; a press queued behind the opening
                 // fill begins, and a run paused while hidden resumes, once
                 // the tab can serve it.
@@ -968,6 +990,7 @@ impl Tab {
             self.symbol = link.symbol().to_string();
         }
         self.refresh_chip_label(config);
+        self.sync_account_poller(config);
         // A recording is its symbol's asset, and wears that asset's settings.
         self.apply_asset_bubbles_after_switch(config);
         // Depth is not in a recording; the toggle is disabled by capability,
@@ -1023,6 +1046,7 @@ impl Tab {
         // backfill about to arrive.
         let readings = self.deal_recorder.take_stash();
         self.retain_deal_samples(&readings);
+        self.sync_account_poller(config);
     }
 
     /// Respawn the transport and keep everything the chart has built:

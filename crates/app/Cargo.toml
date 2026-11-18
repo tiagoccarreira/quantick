@@ -104,6 +104,7 @@ raw-window-handle = { workspace = true }
 # control plane calls it directly, and because a raster no viewer accepts
 # would make an evidence image useless to the human reading the bundle.
 png = { workspace = true }
+reqwest = { workspace = true, features = ["json"] }
 
 [target.'cfg(windows)'.dependencies]
 # Playback of the shipped alarm clips (`assets/alarms/`, see `audio/`). The

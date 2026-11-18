@@ -114,8 +114,11 @@ pub(crate) const ALL_FAMILIES: bool = cfg!(all(
     feature = "quick-range-harness"
 ));
 
-/// Operator configuration, read once by the composition root.
-const CONFIGURATION: &[(&str, &[HookSpec])] = &[("crates/app/src/launch.rs", crate::launch::HOOKS)];
+/// Operator configuration, compiled into every build.
+const CONFIGURATION: &[(&str, &[HookSpec])] = &[
+    ("crates/app/src/launch.rs", crate::launch::HOOKS),
+    ("crates/app/src/account.rs", crate::account::HOOKS),
+];
 
 /// Launch scenarios, scripted menus, demo stagers, capture isolation of the
 /// stores, and the feed's fault injection: `scenario-harness`.

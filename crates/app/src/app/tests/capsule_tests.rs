@@ -44,16 +44,13 @@ fn layout_change_shows_unsaved_marks_until_ctrl_s() {
     frames(&mut app, &ctx, 2);
     app.runtime.workspace.book.book_mut().set_autosave(false);
     frames(&mut app, &ctx, 2);
-    assert!(
-        !snapshot(&app, &egui::Context::default()).marks().1,
-        "a clean tab"
-    );
+    assert!(!snapshot(&app, &ctx).marks().1, "a clean tab");
     assert!(control(&app, "toolbar.capsule.save").is_none());
 
     app.apply_layout_preset(preset("charts-4").unwrap());
     // A frame builds each new chart; the tab settles once all four stand.
     frames(&mut app, &ctx, 6);
-    let (_, unsaved, layout) = snapshot(&app, &egui::Context::default()).marks();
+    let (_, unsaved, layout) = snapshot(&app, &ctx).marks();
     assert!(
         unsaved && layout,
         "the floppy ({unsaved}) and the miniature ({layout}) carry the dot"
@@ -66,7 +63,7 @@ fn layout_change_shows_unsaved_marks_until_ctrl_s() {
     let save = vec![key_press_with(egui::Key::S, egui::Modifiers::CTRL)];
     run_sized_frame(&mut app, &ctx, TEST_WINDOW, save);
     frames(&mut app, &ctx, 2);
-    let (_, unsaved, layout) = snapshot(&app, &egui::Context::default()).marks();
+    let (_, unsaved, layout) = snapshot(&app, &ctx).marks();
     assert!(!unsaved && !layout, "Ctrl+S cleared both dots");
     assert!(
         control(&app, "toolbar.capsule.save").is_none(),
@@ -258,8 +255,9 @@ fn one_display_name_per_layout_in_cell_header_scene_and_read() {
     assert_eq!(read.undo_id.as_deref(), Some(current.id));
 }
 
-/// C9: ≡ | symbol … History | BUY 1 | SELL 1 on the left; the capsule and the
-/// tray on the right.
+/// C9: ≡ | symbol … [History] | Prod | Sim | BUY 1 | SELL 1 on the left; the
+/// capsule and the tray on the right. History may fold into `⋯` when the
+/// TRADE strip grows with the target chips.
 #[test]
 fn toolbar_row_order_matches_the_mock() {
     let (mut app, _evt, _cmd, _book) = test_app();
@@ -272,35 +270,52 @@ fn toolbar_row_order_matches_the_mock() {
     };
     let list = app.chrome.window_menu.toolbar_door.unwrap().center().x;
     let symbol = at(&format!("{} \u{b7}", app.active_tab().symbol));
-    let history = at(&format!(
-        "{} History",
-        egui_phosphor::regular::CLOCK_COUNTER_CLOCKWISE
-    ));
+    let history = painted_starting(
+        &output,
+        &format!(
+            "{} History",
+            egui_phosphor::regular::CLOCK_COUNTER_CLOCKWISE
+        ),
+    )
+    .map(|pos| pos.x);
+    let (prod, sim) = (at("Prod"), at("Sim"));
     let (buy, sell) = (at("BUY 1"), at("SELL 1"));
     let capsule = app.chrome.capsule;
-    let tray = at(egui_phosphor::regular::TRAY);
-    let row = [
-        list,
-        symbol,
-        history,
+    let tray = painted_starting(&output, egui_phosphor::regular::TRAY).map(|pos| pos.x);
+    let mut row = vec![list, symbol];
+    if let Some(history) = history {
+        row.push(history);
+    }
+    row.extend([
+        prod,
+        sim,
         buy,
         sell,
         capsule.miniature.center().x,
         capsule.name.center().x,
-        tray,
-    ];
+    ]);
+    if let Some(tray) = tray {
+        row.push(tray);
+    }
     assert!(
         row.windows(2).all(|pair| pair[0] < pair[1]),
         "left to right: {row:?}"
     );
     assert!(
         sell < TEST_WINDOW.x / 2.0,
-        "BUY and SELL sit left, after History: {row:?}"
+        "BUY and SELL sit left, after the target chips: {row:?}"
     );
-    assert!(
-        capsule.name.right() < tray,
-        "the capsule stands before the tray"
-    );
+    if let Some(tray) = tray {
+        assert!(
+            capsule.name.right() < tray,
+            "the capsule stands before the tray"
+        );
+    } else {
+        assert!(
+            painted_starting(&output, egui_phosphor::regular::DOTS_THREE).is_some(),
+            "when the tray folds, the overflow ··· takes its place"
+        );
+    }
 }
 
 #[test]

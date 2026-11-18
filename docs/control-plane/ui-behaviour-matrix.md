@@ -42,13 +42,13 @@ The three exclusion classes are closed:
 
 | Outcome | Behaviours |
 | --- | --- |
-| Reachable by capability | 143 |
+| Reachable by capability | 149 |
 | Excluded: `authority` | 4 |
 | Excluded: `ui_only_by_decision` | 7 |
 | Excluded: `pending_capability` | 39 |
-| **Total** | **193** |
+| **Total** | **199** |
 
-99 of the 193 rows claim at least one registry entry, so the drift guard fails when the interface changes under them. The other 94 say in the table that no registry stands behind them — a drag on a splitter, a number typed into the ticket — each with the reason, listed in full below. A row that says neither is a guard failure, not a third category.
+105 of the 199 rows claim at least one registry entry, so the drift guard fails when the interface changes under them. The other 94 say in the table that no registry stands behind them — a drag on a splitter, a number typed into the ticket — each with the reason, listed in full below. A row that says neither is a guard failure, not a third category.
 
 ## Behaviours
 
@@ -115,6 +115,7 @@ The three exclusion classes are closed:
 | `layer.footprint.toggle` | Switch the candle footprint on or off | pane capsule glyph, pane right-click layer menu, Ctrl+F | `layers.visibility.set` | — |
 | `layer.heatmap.toggle` | Switch the L2 depth map on or off | capsule glyph, pane right-click layer menu | `layers.visibility.set` | — |
 | `layer.live_strip.toggle` | Switch the live depth strip on or off | pane header glyph, pane right-click layer menu | `layers.visibility.set` | — |
+| `layer.venue_position.toggle` | Switch the account position overlay on or off | trail capsule glyph beside the live strip, pane right-click layer menu | `layers.visibility.set` | — |
 | `layer.tape_bubbles.toggle` | Switch the bubbles on the tape on or off | tape capsule glyph, pane right-click layer menu | `layers.visibility.set` | — |
 | `layer.tape_heatmap.toggle` | Switch the book on the tape on or off | tape capsule glyph, pane right-click layer menu | `layers.visibility.set` | — |
 | `layer.tape_only.toggle` | Give the tape its own canvas without candles | pane right-click layer menu; Bubbles settings, Tape only (hide trail) | `layers.visibility.set` | — |
@@ -158,13 +159,18 @@ The three exclusion classes are closed:
 | `trade.journal.session.fold` | Fold a trading session shut inside its day, or open it | a session row's caret in the Trades tab | `session.journal.set` | — |
 | `trade.journal.session.rename` | Name a trading session | a session row's menu in the Trades tab, F2 over the ledger | `session.journal.set` | — |
 | `trade.journal.trade.tag` | Tag a closed trade | the Trades tab's tag strip for the selected trade, # over the ledger | `session.journal.set` | — |
+| `trade.execution.target.set` | Choose where Buy/Sell go: Sim or Prod/Demo | toolbar trade group target chips | `trade.order.place` | — |
 | `trade.market.buy` | Buy at market, simulated | toolbar trade group, Trading panel, Shift+B | `trade.order.place` | — |
 | `trade.market.sell` | Sell at market, simulated | toolbar trade group, Trading panel, Shift+S | `trade.order.place` | — |
+| `trade.venue.buy` | Buy through the connected MT5 account | toolbar trade group while Prod or Demo is selected | `trade.order.place` | — |
+| `trade.venue.sell` | Sell through the connected MT5 account | toolbar trade group while Prod or Demo is selected | `trade.order.place` | — |
 | `trade.order.place_at_price` | Rest an order at the price under the pointer | the canvas right-click menu's trade section | `trade.order.place` | — |
 | `trade.orders.cancel_all` | Cancel every working order without trading | Trading panel, Shift+X | `trade.order.cancel` | — |
 | `trade.position.close` | Exit the open position at the next print | toolbar trade group, Trading panel | `trade.order.place` | — |
+| `trade.venue.close` | Close every open MT5 ticket on the chart symbol | toolbar trade group while Prod or Demo is selected | `trade.order.place` | — |
 | `trade.position.flatten` | Close the position and cancel every working order | Trading panel, Shift+F | `trade.position.flatten` | — |
 | `trade.position.reverse` | Reverse the simulated position | toolbar trade group, Trading panel, Shift+R | `trade.position.reverse` | — |
+| `trade.venue.reverse` | Close the open MT5 tickets and open the other way at market | toolbar trade group while Prod or Demo is selected | `trade.position.reverse` | — |
 | `trade.ticket.risk.set` | Say what one trade may lose | the Trading panel's risk section | `trade.risk.set` | — |
 | `trade.ticket.ruler.set` | Walk the projected stop and target out from the aim | the ruler wheel on the chart's aim | `trade.ruler.set` | — |
 | `trade.ticket.strategy.select` | Choose the ticket's exit ladder | the Trading panel's strategy selector | `trade.strategy.select` | — |
@@ -256,11 +262,11 @@ matrix fails the build.
 
 | Source | Claims |
 | --- | --- |
-| `toolbar_action` | 21 |
+| `toolbar_action` | 26 |
 | `strip_action` | 6 |
 | `tab_action` | 4 |
 | `dock_tab` | 3 |
-| `layer_toggle` | 6 |
+| `layer_toggle` | 7 |
 | `drawing_tool` | 22 |
 | `rail_tool` | 2 |
 | `toolbox_dock` | 3 |

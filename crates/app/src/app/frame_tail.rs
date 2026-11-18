@@ -46,7 +46,7 @@ impl FrameTailOwners<'_> {
         input: &FrameTailInput<'_>,
         spawn: &mut LiveFeedSpawn<'_>,
         stage: FrameTailStage,
-        settle: fn(&mut ArrangementHost, &mut ToastSurface, Instant),
+        settle: fn(&mut ArrangementHost, &AppConfig, &mut ToastSurface, Instant),
     ) -> SurfaceResponse {
         if stage.needs_presentation() && input.presentation.is_none() {
             return SurfaceResponse::default();
@@ -68,7 +68,7 @@ impl FrameTailOwners<'_> {
                 }
             }
             FrameTailStage::SettlePaperPanels => {
-                settle(self.tabs, &mut self.surfaces.toast, input.now)
+                settle(self.tabs, self.config, &mut self.surfaces.toast, input.now)
             }
             FrameTailStage::DrawPaperReport => {
                 let Some(ctx) = input.presentation else {
@@ -80,6 +80,7 @@ impl FrameTailOwners<'_> {
                     replay: tab.link.replay.as_ref(),
                     paper: &mut tab.paper,
                     timezone: input.tz,
+                    venue: None,
                 });
                 return self.surfaces.draw_slot_unscoped_with_env(
                     quantick_ui_model::Slot::FrameTailPaperPanels,
@@ -134,19 +135,21 @@ impl FrameTailOwners<'_> {
 #[cfg(test)]
 pub(super) fn settle_paper_panels(
     tabs: &mut super::arrangement_host::ArrangementHost,
+    config: &AppConfig,
     toast: &mut ToastSurface,
     now: Instant,
 ) {
-    settle_paper_panels_where(tabs, toast, now, |_| true);
+    settle_paper_panels_where(tabs, config, toast, now, |_| true);
 }
 
 pub(super) fn settle_active_paper_panel(
     tabs: &mut super::arrangement_host::ArrangementHost,
+    config: &AppConfig,
     toast: &mut ToastSurface,
     now: Instant,
 ) {
     let active = tabs.active_id();
-    settle_paper_panels_where(tabs, toast, now, |id| id == active);
+    settle_paper_panels_where(tabs, config, toast, now, |id| id == active);
 }
 
 /// The tab each window shows.
@@ -161,11 +164,12 @@ fn shown(tabs: &ArrangementHost) -> Vec<u64> {
 
 pub(super) fn settle_background_paper_panels(
     tabs: &mut ArrangementHost,
+    config: &AppConfig,
     toast: &mut ToastSurface,
     now: Instant,
 ) {
     let shown = shown(tabs);
-    settle_paper_panels_where(tabs, toast, now, |id| !shown.contains(&id));
+    settle_paper_panels_where(tabs, config, toast, now, |id| !shown.contains(&id));
 }
 
 /// Cancels for the disarmed bots of the tabs no window shows.
@@ -180,6 +184,7 @@ pub(super) fn clean_up_background_strategies(tabs: &mut ArrangementHost) {
 
 fn settle_paper_panels_where(
     tabs: &mut super::arrangement_host::ArrangementHost,
+    config: &AppConfig,
     toast: &mut ToastSurface,
     now: Instant,
     include: impl Fn(u64) -> bool,
@@ -192,6 +197,42 @@ fn settle_paper_panels_where(
             continue;
         }
         tab.paper.settle();
+        if let Some(click) = tab.paper.take_venue_click() {
+            let source_ok = {
+                let caps = tab.capabilities(config);
+                caps.open_positions && tab.link.replay.is_none()
+            };
+            let form = tab.paper.desk.ticket.form();
+            let (stop_offset, profit_offset) = form.offsets.unwrap_or((None, None));
+            match form.quantity {
+                Ok(volume) => crate::account::request_venue_entry(
+                    &mut tab.account,
+                    source_ok,
+                    tab.symbol.clone(),
+                    click.side,
+                    volume,
+                    Some(click.kind),
+                    tab.paper.mark_price(),
+                    Some(click.price),
+                    stop_offset,
+                    profit_offset,
+                ),
+                Err(_) => tab
+                    .account
+                    .ticket
+                    .announce("MT5: quantity must be a positive number"),
+            }
+        }
+        if let Some(link) = tab.account.link.as_ref() {
+            for notice in link.drain_notices() {
+                let message = notice.toast();
+                tab.account.ticket.set_status(message.clone());
+                tab.paper.show_toast(message);
+            }
+        }
+        if let Some(message) = tab.account.ticket.take_toast() {
+            tab.paper.show_toast(message);
+        }
         let Some(message) = tab.paper.take_toast() else {
             continue;
         };

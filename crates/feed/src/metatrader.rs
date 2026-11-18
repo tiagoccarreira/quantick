@@ -323,6 +323,8 @@ fn session_capabilities(
         open_interest: false,
         funding: false,
         spot_perp_pair: false,
+        open_positions: true,
+        mcp_configured: false,
     }
 }
 

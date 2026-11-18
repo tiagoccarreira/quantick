@@ -119,6 +119,8 @@ impl ProviderKind {
                 open_interest: false,
                 funding: false,
                 spot_perp_pair: false,
+                open_positions: false,
+                mcp_configured: false,
             },
             // `recentTrades` is a short recovery window, not a pageable
             // historical API. Trades and the visible 20-level book are factual;
@@ -144,6 +146,8 @@ impl ProviderKind {
                 open_interest: false,
                 funding: false,
                 spot_perp_pair: false,
+                open_positions: false,
+                mcp_configured: false,
             },
             // The bridge streams the terminal's Depth of Market. Whether a
             // given session really has one (symbol, account, EA version) is
@@ -173,6 +177,11 @@ impl ProviderKind {
                 open_interest: false,
                 funding: false,
                 spot_perp_pair: false,
+                // The terminal holds the account. Whether this process can
+                // *read* it is a later overlay (`mcp_configured`): the token
+                // lives in the operator's config, not in the feed.
+                open_positions: true,
+                mcp_configured: false,
             },
         }
     }
@@ -300,6 +309,18 @@ pub struct FeedCapabilities {
     /// Streams the same asset's spot and perpetual tapes side by side, for
     /// the Spot vs Perp CVD pane. No provider does yet.
     pub spot_perp_pair: bool,
+    /// This source can report the operator's open positions. True only of a
+    /// live MetaTrader session: a recording has no account, and a crypto
+    /// venue is not this process's broker.
+    ///
+    /// The overlay that *draws* them still needs a token; that is
+    /// [`mcp_configured`](Self::mcp_configured), filled by the app, never by
+    /// the feed thread.
+    pub open_positions: bool,
+    /// The operator has given this process a token to ask the account MCP.
+    /// Always false on the value a feed thread publishes; the app overlays
+    /// it when it copies capabilities for the UI.
+    pub mcp_configured: bool,
 }
 
 /// Where a feed's pageable trade history ends, labelled rather than left
@@ -411,6 +432,8 @@ impl FeedCapabilities {
             open_interest: false,
             funding: false,
             spot_perp_pair: false,
+            open_positions: false,
+            mcp_configured: false,
         }
     }
 
@@ -473,6 +496,19 @@ pub struct MetaTraderSettings {
     /// this never has to repeat what quantick already knows. Resolved against
     /// quantick's working directory.
     pub bridge_command: Vec<String>,
+    /// Streamable HTTP endpoint of the local MetaTrader MCP
+    /// (`get_trading_open_positions`). Empty disables the account overlay.
+    #[serde(default = "default_mcp_url")]
+    pub mcp_url: String,
+    /// Bearer token for [`mcp_url`](Self::mcp_url). Empty in the shipped
+    /// default; set in `quantick.toml` or `QUANTICK_MT5_MCP_TOKEN`. Never
+    /// committed.
+    #[serde(default)]
+    pub mcp_token: String,
+}
+
+fn default_mcp_url() -> String {
+    "http://127.0.0.1:22346/mcp".to_string()
 }
 
 impl Default for MetaTraderSettings {
@@ -486,6 +522,8 @@ impl Default for MetaTraderSettings {
                 "python".to_string(),
                 "bridge/mt5/quantick_bridge.py".to_string(),
             ],
+            mcp_url: "http://127.0.0.1:22346/mcp".to_string(),
+            mcp_token: String::new(),
         }
     }
 }

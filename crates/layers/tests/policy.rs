@@ -190,3 +190,31 @@ fn tape_only_reports_candle_layers_hidden_without_erasing_their_choices() {
         );
     }
 }
+
+#[test]
+fn the_account_position_layer_follows_the_source_not_the_provider_name() {
+    let none = LayerFacts {
+        flow_pane: true,
+        ..LayerFacts::default()
+    };
+    assert_eq!(
+        LayerState::blocked(L::VenuePosition, none).map(|block| block.code),
+        Some("source_has_no_trading_account")
+    );
+    let tokenless = LayerFacts {
+        open_positions: true,
+        mcp_configured: false,
+        ..none
+    };
+    assert_eq!(
+        LayerState::blocked(L::VenuePosition, tokenless).map(|block| block.code),
+        Some("configure_mcp_token")
+    );
+    let ready = LayerFacts {
+        open_positions: true,
+        mcp_configured: true,
+        ..none
+    };
+    assert_eq!(LayerState::blocked(L::VenuePosition, ready), None);
+    assert!(LayerState::effective(L::VenuePosition, true, ready));
+}

@@ -2242,6 +2242,7 @@ fn a_paper_acknowledgement_reaches_the_windows_one_toast() {
         .show_toast("SIM: dropped at the fill - no bid".to_owned());
     frame_tail::settle_paper_panels(
         &mut app.runtime.tabs,
+        &app.config,
         &mut app.surfaces.toast,
         Instant::now(),
     );
@@ -2270,12 +2271,14 @@ fn a_paper_acknowledgement_is_handed_over_once() {
         .show_toast("SIM: flat".to_owned());
     frame_tail::settle_paper_panels(
         &mut app.runtime.tabs,
+        &app.config,
         &mut app.surfaces.toast,
         Instant::now(),
     );
     app.surfaces.toast.model_state = Default::default();
     frame_tail::settle_paper_panels(
         &mut app.runtime.tabs,
+        &app.config,
         &mut app.surfaces.toast,
         Instant::now(),
     );

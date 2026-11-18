@@ -463,6 +463,7 @@ impl QuantickApp {
             }
             FrameStage::BackgroundPaperPanels => super::frame_tail::settle_background_paper_panels(
                 &mut self.runtime.tabs,
+                &self.config,
                 &mut self.surfaces.toast,
                 now,
             ),

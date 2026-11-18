@@ -947,6 +947,7 @@ fn drive_navigation_asking(
                 },
                 footprint: &footprint,
                 layers: &mut layers,
+                venue_position: None,
             };
             pane.handle_navigation(ui, area, &mut chrome);
         });
@@ -1004,6 +1005,7 @@ fn with_chrome_over<R>(
         price_tag: Default::default(),
         footprint: &footprint,
         layers: &mut layers,
+        venue_position: None,
     })
 }
 

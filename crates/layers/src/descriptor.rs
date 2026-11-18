@@ -58,6 +58,8 @@ pub enum Requirement {
     Book,
     Volume,
     BookOrVolume,
+    /// A live trading account on this source, asked through the account MCP.
+    Account,
 }
 
 /// Data shared by menu, state transitions, persistence and control discovery.
@@ -83,7 +85,7 @@ pub struct LayerDescriptor {
 pub struct ChartLayer(pub &'static LayerDescriptor);
 
 impl ChartLayer {
-    pub const ALL: [Self; 27] = builtins::ALL;
+    pub const ALL: [Self; 28] = builtins::ALL;
     pub const fn id(self) -> &'static str {
         self.0.id
     }
@@ -230,5 +232,13 @@ pub mod blocks {
     pub const DEPTH_MAP_HIDDEN: LayerBlock = LayerBlock::new(
         "the_depth_map_it_reports_on_is_hidden",
         "the badge reports on the depth map, which is hidden",
+    );
+    pub const NO_ACCOUNT: LayerBlock = LayerBlock::new(
+        "source_has_no_trading_account",
+        "this source has no trading account",
+    );
+    pub const NO_MCP_TOKEN: LayerBlock = LayerBlock::new(
+        "configure_mcp_token",
+        "configure mcp_token in quantick.toml or QUANTICK_MT5_MCP_TOKEN",
     );
 }

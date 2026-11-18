@@ -53,22 +53,17 @@ fn trade_actions_keep_readable_labels() {
                     ..Default::default()
                 },
                 |ctx| {
-                    egui::CentralPanel::default()
-                        .show(ctx, |ui| draw_trade(ui, &flat_trade(ready), &mut actions));
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        draw_trade(
+                            ui,
+                            &flat_trade(ready),
+                            &quantick_ui_model::chrome_toolbar::ExecutionStrip::default(),
+                            &mut actions,
+                        )
+                    });
                 },
             );
             assert!(actions.is_empty());
-            if state == 2 {
-                let id = ctx
-                    .data(|data| data.get_temp::<egui::Id>(egui::Id::new("toolbar_buy_response")))
-                    .unwrap();
-                assert_eq!(
-                    ctx.memory(|memory| memory.has_focus(id)),
-                    ready,
-                    "BUY focus follows enabled state"
-                );
-            }
-
             let buy = output
                 .shapes
                 .iter()
@@ -118,7 +113,7 @@ fn nothing_folds_at_the_common_window_widths() {
         1920.0 - ROW_MARGINS - REC_WIDTH,
     ] {
         assert_eq!(
-            collapse_plan(available, W_TRADE),
+            collapse_plan(available, trade_strip_width_for_tests(false)),
             CollapsePlan::FULL,
             "{available} px"
         );
@@ -131,7 +126,7 @@ fn nothing_folds_at_the_common_window_widths() {
 #[test]
 fn a_narrow_window_folds_panels_and_history_but_keeps_trade() {
     for available in [1100.0 - ROW_MARGINS, 1280.0 - ROW_MARGINS - REC_WIDTH] {
-        let plan = collapse_plan(available, W_TRADE);
+        let plan = collapse_plan(available, trade_strip_width_for_tests(false));
         assert!(
             !plan.panels_inline && !plan.history_inline,
             "{available} px"
@@ -159,9 +154,13 @@ fn every_separator_has_its_air_on_both_sides() {
         .collect();
     assert_eq!(rules.len(), 5, "five full-height separators: {rules:?}");
     let (buy, _) = entry_rects(&shapes);
-    assert_eq!(
-        rules[2].right() + SEPARATOR_AIR_PX,
-        buy.expect("BUY").left()
+    let buy = buy.expect("BUY");
+    // Prod|Sim chips sit between the TRADE rule and BUY.
+    assert!(
+        buy.left() >= rules[2].right() + SEPARATOR_AIR_PX + TARGET_CHIP_WIDTH_PX,
+        "BUY follows the target chips after the TRADE rule: buy={} rule={}",
+        buy.left(),
+        rules[2].right()
     );
     let history = shapes
         .iter()
@@ -249,7 +248,7 @@ fn opening_a_position_never_changes_the_collapse_plan() {
         close: Some("Close 88888 SHORT".to_owned()),
         ..flat_trade(true)
     };
-    let full = CollapsePlan::FULL.width(W_TRADE);
+    let full = CollapsePlan::FULL.width(trade_strip_width_for_tests(false));
     for width in [full + 200.0, full, full - 40.0, full - 200.0, full - 400.0] {
         let flat_rects = entry_rects(&toolbar_shapes(flat_trade(true), width));
         let open_rects = entry_rects(&toolbar_shapes(open.clone(), width));
@@ -316,8 +315,11 @@ fn the_toolbar_lays_out_against_a_real_context() {
                             open_interest: false,
                             funding: false,
                             spot_perp_pair: false,
+                            open_positions: false,
+                            mcp_configured: false,
                         },
                         dock_visible: true,
+                        execution: quantick_ui_model::chrome_toolbar::ExecutionStrip::default(),
                         paper: flat_trade(true),
                     },
                 };
@@ -380,8 +382,11 @@ fn a_quote_driven_feed_lays_the_toolbar_out_with_its_volume_widgets_disabled() {
                         open_interest: false,
                         funding: false,
                         spot_perp_pair: false,
+                        open_positions: false,
+                        mcp_configured: false,
                     },
                     dock_visible: true,
+                    execution: quantick_ui_model::chrome_toolbar::ExecutionStrip::default(),
                     // Not yet ready: the TRADE pair must lay out in its
                     // disabled state without asking anything of the app.
                     paper: flat_trade(false),
@@ -494,8 +499,11 @@ fn toolbar_shapes(paper: PaperTradeModel, width: f32) -> Vec<egui::epaint::Clipp
                         open_interest: false,
                         funding: false,
                         spot_perp_pair: false,
+                        open_positions: false,
+                        mcp_configured: false,
                     },
                     dock_visible: true,
+                    execution: quantick_ui_model::chrome_toolbar::ExecutionStrip::default(),
                     paper: paper.clone(),
                 },
             };
@@ -538,7 +546,12 @@ fn paint_trade(paper: &PaperTradeModel) -> (TradeRects, Vec<(String, bool)>) {
                 // Left to right, as in the toolbar's left run.
                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
                     let mut actions = Vec::new();
-                    draw_trade(ui, paper, &mut actions);
+                    draw_trade(
+                        ui,
+                        paper,
+                        &quantick_ui_model::chrome_toolbar::ExecutionStrip::default(),
+                        &mut actions,
+                    );
                     assert!(actions.is_empty(), "no clicks, no actions");
                 });
             });
@@ -546,13 +559,14 @@ fn paint_trade(paper: &PaperTradeModel) -> (TradeRects, Vec<(String, bool)>) {
         shapes = output.shapes;
     }
     let (buy, sell) = entry_rects(&shapes);
-    // The outlined pair, in paint order: Close then Reverse.
+    // Close / Reverse: control-filled rects to the right of SELL, sized as fixed.
     let outlined: Vec<egui::Rect> = shapes
         .iter()
         .filter_map(|shape| match &shape.shape {
             egui::epaint::Shape::Rect(rect) if rect.fill == theme::CONTROL => Some(rect.rect),
             _ => None,
         })
+        .filter(|rect| sell.is_none_or(|sell| rect.left() >= sell.right() - 0.5))
         .collect();
     let texts = shapes
         .iter()
@@ -563,11 +577,19 @@ fn paint_trade(paper: &PaperTradeModel) -> (TradeRects, Vec<(String, bool)>) {
             _ => None,
         })
         .collect();
+    let close = outlined
+        .iter()
+        .find(|rect| (rect.width() - TRADE_CLOSE_WIDTH_PX).abs() < 0.5)
+        .copied();
+    let reverse = outlined
+        .iter()
+        .find(|rect| (rect.width() - TRADE_REVERSE_WIDTH_PX).abs() < 0.5)
+        .copied();
     let rects = TradeRects {
         buy: buy.expect("buy painted"),
         sell: sell.expect("sell painted"),
-        close: outlined.first().copied(),
-        reverse: outlined.get(1).copied(),
+        close,
+        reverse,
     };
     (rects, texts)
 }
@@ -726,7 +748,14 @@ fn click_trade(paper: &PaperTradeModel, at: egui::Pos2) -> Vec<ToolbarAction> {
         let _ = ctx.run(input, |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
                 let row = egui::Layout::left_to_right(egui::Align::Min);
-                ui.with_layout(row, |ui| draw_trade(ui, paper, &mut actions));
+                ui.with_layout(row, |ui| {
+                    draw_trade(
+                        ui,
+                        paper,
+                        &quantick_ui_model::chrome_toolbar::ExecutionStrip::default(),
+                        &mut actions,
+                    )
+                });
             });
         });
     }

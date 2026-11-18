@@ -818,11 +818,25 @@ pub fn layer_glyph(
         );
     }
     let boxed = egui::Rect::from_center_size(rect.center(), egui::Vec2::splat(GLYPH_BOX));
-    paint_layer(ui.painter(), boxed, glyph.toggle, glyph.ink());
+    paint_layer(
+        ui.painter(),
+        boxed,
+        glyph.toggle,
+        glyph.ink(),
+        glyph.blocked.is_some(),
+    );
     record(ui, HeaderControl::Layer(glyph.toggle), rect, painted);
     response.on_hover_ui(|ui| {
-        let key = shortcuts::binding(glyph.toggle.layer());
+        let layer = glyph.toggle.layer();
+        let key = shortcuts::binding(layer);
         ui.label(with_key(ui.ctx(), glyph.toggle.name(), key));
+        let hint = layer.hint();
+        if !hint.is_empty() {
+            ui.label(egui::RichText::new(hint).color(palette.text_muted()).small());
+        }
+        if let Some(block) = glyph.blocked {
+            ui.label(block.explanation);
+        }
     });
 }
 
@@ -1029,9 +1043,15 @@ impl Pen<'_> {
     }
 }
 
-fn paint_layer(painter: &egui::Painter, boxed: egui::Rect, toggle: LayerToggle, ink: GlyphInk) {
+fn paint_layer(
+    painter: &egui::Painter,
+    boxed: egui::Rect,
+    toggle: LayerToggle,
+    ink: GlyphInk,
+    blocked: bool,
+) {
     let palette = theme::get(painter.ctx());
-    let lit = ink == GlyphInk::Lit;
+    let lit = ink == GlyphInk::Lit && !blocked;
     let colour = if lit {
         palette.text_primary()
     } else {
@@ -1073,8 +1093,13 @@ fn paint_layer(painter: &egui::Painter, boxed: egui::Rect, toggle: LayerToggle, 
                 pen.line((x, 2.0), (x, 14.0));
             }
         }
+        // A price level with a tick on the right: the account's entry.
+        LayerToggle::VenuePosition => {
+            pen.line((1.5, 7.5), (13.5, 7.5));
+            pen.line((13.5, 4.5), (13.5, 10.5));
+        }
     }
-    if !lit {
+    if !lit && !blocked {
         painter.line_segment(
             [pen.at(2.0, 14.0), pen.at(14.0, 2.0)],
             egui::Stroke::new(SLASH_PX, colour),

@@ -19,6 +19,7 @@ use quantick_control::limits::CONTROL_DISCOVERY_MAX_ENTRIES;
 
 const NO_INSTANCE_NEXT_STEP: &str = "Start Quantick, open the window menu > Settings > Local agent access, and enable observer access.";
 /// Covers the Unix boot-time resolution and small wall-clock adjustments.
+#[cfg_attr(not(any(windows, target_os = "linux")), allow(dead_code))]
 const PROCESS_START_TOLERANCE_MS: i64 = 1_000;
 #[cfg(windows)]
 const WINDOWS_MIN_SID_BYTES: usize = 8;
@@ -1387,6 +1388,7 @@ mod tests {
         fs::remove_dir_all(directory).unwrap();
     }
 
+    #[cfg(any(windows, target_os = "linux"))]
     #[test]
     fn system_probe_rejects_a_reused_process_id() {
         let mut stale = descriptor(41, 1);

@@ -153,20 +153,26 @@ fn draw(
                         // with no way to reach them.
                         egui::ScrollArea::vertical()
                             .auto_shrink([false, true])
-                            .show(ui, |ui| match env.paper.draw_trading_tab(ui) {
-                                Some(TradingTabAction::PickTradesDir) => {
-                                    response.pick_trades_dir = true;
+                            .show(ui, |ui| {
+                                if let Some(venue) = env.venue.as_mut() {
+                                    crate::account::draw_conta_plate(ui, venue);
+                                    ui.add_space(10.0);
                                 }
-                                Some(TradingTabAction::CmdTradingChanged) => {
-                                    response.cmd_trading_changed = true;
+                                match env.paper.draw_trading_tab(ui) {
+                                    Some(TradingTabAction::PickTradesDir) => {
+                                        response.pick_trades_dir = true;
+                                    }
+                                    Some(TradingTabAction::CmdTradingChanged) => {
+                                        response.cmd_trading_changed = true;
+                                    }
+                                    Some(TradingTabAction::OrderStrategiesChanged) => {
+                                        response.order_strategies_changed = true;
+                                    }
+                                    Some(TradingTabAction::RiskSettingsChanged) => {
+                                        response.risk_settings_changed = true;
+                                    }
+                                    None => {}
                                 }
-                                Some(TradingTabAction::OrderStrategiesChanged) => {
-                                    response.order_strategies_changed = true;
-                                }
-                                Some(TradingTabAction::RiskSettingsChanged) => {
-                                    response.risk_settings_changed = true;
-                                }
-                                None => {}
                             });
                     }
                     // The ledger manages its own scroll (a virtualised

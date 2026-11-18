@@ -666,12 +666,14 @@ impl Tab {
             flow_pane,
             time_panes,
             paper,
+            account,
             market: crate::strategy_anchors::TabMarket { strategies, .. },
             link,
             paper_drag_pane,
             focus,
             ..
         } = self;
+        let venue_position = account.link.as_mut().and_then(|link| link.poll());
         // Cleared before the loop, set by whichever panes it actually walks: a
         // collapsed context column would otherwise keep the rect it last had,
         // and the overlay would paint off the visible canvas.
@@ -750,6 +752,7 @@ impl Tab {
             },
             footprint: chrome.footprint,
             layers: chrome.layers,
+            venue_position,
         };
         // The paper input pane first, then time panes, then flow. Every pane
         // takes the same two steps in the same order — which is what keeps

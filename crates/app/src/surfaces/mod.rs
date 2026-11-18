@@ -14,6 +14,7 @@ pub(crate) struct PaperPanelEnv<'a> {
     pub paper: &'a mut crate::paper_trading::PaperTrading,
     pub replay: Option<&'a quantick_feed::ReplayLink>,
     pub timezone: crate::timezone::TzOffset,
+    pub venue: Option<crate::account::VenuePlateEnv<'a>>,
 }
 /// Validated indicator address and authoritative descriptor/preset services.
 pub(crate) struct IndicatorPanelEnv<'a> {

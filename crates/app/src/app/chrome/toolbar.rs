@@ -80,7 +80,33 @@ pub(in crate::app) fn draw(app: &mut QuantickApp, ctx: &egui::Context) {
                 .window(quantick_workspace::arrangement::windows::WindowId(scope))
                 .is_some()
         });
+    {
+        let tab = app.active_tab_mut();
+        tab.paper.venue_armed_route = tab.account.ticket.target.account_mode().is_some();
+    }
     let tab = app.active_tab();
+    let source_ok = {
+        let caps = tab.capabilities(&app.config);
+        caps.open_positions && tab.link.replay.is_none()
+    };
+    let account_info = tab
+        .account
+        .link
+        .as_ref()
+        .and_then(crate::account::AccountLink::cached)
+        .and_then(|snap| snap.info.clone());
+    let venue_close = tab
+        .account
+        .link
+        .as_ref()
+        .and_then(crate::account::AccountLink::cached)
+        .and_then(|snap| snap.positions.close_label());
+    let execution = execution_strip(
+        tab.account.ticket.target,
+        account_info.as_ref(),
+        source_ok,
+        venue_close,
+    );
     let snapshot = quantick_ui_model::chrome_toolbar::Snapshot {
         capsule: capsule.clone(),
         market: (chip, tab.chip_label().to_owned()),
@@ -95,6 +121,7 @@ pub(in crate::app) fn draw(app: &mut QuantickApp, ctx: &egui::Context) {
         paper: tab
             .paper
             .trade_bar(&ctx.format_shortcut(&crate::app::menu_bar::PAPER_REVERSE_SHORTCUT)),
+        execution,
     };
     app.surfaces.update_scoped(
         scope,
@@ -138,6 +165,7 @@ pub(in crate::app) fn draw(app: &mut QuantickApp, ctx: &egui::Context) {
     for action in settle(app, ctx, &capsule, capsule_rects, toolbar_door, actions) {
         app.apply_toolbar_action(action);
     }
+    crate::account::draw_prod_confirm(ctx, &mut app.active_tab_mut().account);
 }
 
 impl QuantickApp {
@@ -235,6 +263,150 @@ impl QuantickApp {
             ToolbarAction::PaperSell => self.trade(TradeCommand::Market { side: Side::Sell }),
             ToolbarAction::PaperClose => self.trade(TradeCommand::Close),
             ToolbarAction::PaperReverse => self.trade(TradeCommand::Reverse),
+            ToolbarAction::VenueBuy => self.venue_entry(Side::Buy),
+            ToolbarAction::VenueSell => self.venue_entry(Side::Sell),
+            ToolbarAction::VenueClose => self.venue_close(),
+            ToolbarAction::VenueReverse => self.venue_reverse(),
+            ToolbarAction::SetExecutionTarget(target) => self.set_execution_target(target),
         }
+    }
+
+    fn set_execution_target(&mut self, target: quantick_ui_model::chrome_toolbar::ExecutionTarget) {
+        let tab = self.active_tab_mut();
+        tab.account.ticket.target = match target {
+            quantick_ui_model::chrome_toolbar::ExecutionTarget::Sim => {
+                crate::account::ExecutionTarget::Sim
+            }
+            quantick_ui_model::chrome_toolbar::ExecutionTarget::Prod => {
+                crate::account::ExecutionTarget::Prod
+            }
+            quantick_ui_model::chrome_toolbar::ExecutionTarget::Demo => {
+                crate::account::ExecutionTarget::Demo
+            }
+        };
+        tab.paper.venue_armed_route = tab.account.ticket.target.account_mode().is_some();
+        if !tab.paper.venue_armed_route {
+            tab.paper.desk.armed = None;
+            let _ = tab.paper.take_venue_click();
+        }
+        tab.account.ticket.persist();
+    }
+
+    fn venue_source_ok(&self) -> bool {
+        let tab = self.active_tab();
+        let caps = tab.capabilities(&self.config);
+        caps.open_positions && tab.link.replay.is_none()
+    }
+
+    fn venue_entry(&mut self, side: Side) {
+        let source_ok = self.venue_source_ok();
+        let (symbol, volume, order_type, mark, stop_offset, profit_offset) = {
+            let tab = self.active_tab();
+            let symbol = tab.symbol.clone();
+            let form = tab.paper.desk.ticket.form();
+            let volume = form.quantity.ok();
+            let order_type = tab.paper.desk.ticket.order_type;
+            let mark = tab.paper.mark_price();
+            let (stop_offset, profit_offset) = form.offsets.unwrap_or((None, None));
+            (symbol, volume, order_type, mark, stop_offset, profit_offset)
+        };
+        let Some(volume) = volume else {
+            self.active_tab_mut()
+                .account
+                .ticket
+                .announce("MT5: quantity must be a positive number");
+            return;
+        };
+        match order_type {
+            quantick_sim::EntryKind::Limit | quantick_sim::EntryKind::Stop => {
+                let tab = self.active_tab_mut();
+                tab.paper.venue_armed_route = true;
+                tab.paper.desk.armed = Some(quantick_paper::desk::ArmedPlacement {
+                    side,
+                    kind: order_type,
+                });
+                tab.account
+                    .ticket
+                    .set_status("MT5: click the chart at your price · Esc cancels");
+            }
+            quantick_sim::EntryKind::Market => {
+                let tab = self.active_tab_mut();
+                crate::account::request_venue_entry(
+                    &mut tab.account,
+                    source_ok,
+                    symbol,
+                    side,
+                    volume,
+                    None,
+                    mark,
+                    None,
+                    stop_offset,
+                    profit_offset,
+                );
+            }
+        }
+    }
+
+    fn venue_close(&mut self) {
+        let source_ok = self.venue_source_ok();
+        let symbol = self.active_tab().symbol.clone();
+        let tab = self.active_tab_mut();
+        crate::account::request_venue_close(&mut tab.account, source_ok, symbol);
+    }
+
+    fn venue_reverse(&mut self) {
+        let source_ok = self.venue_source_ok();
+        let (symbol, mark, stop_offset, profit_offset) = {
+            let tab = self.active_tab();
+            let form = tab.paper.desk.ticket.form();
+            let (stop_offset, profit_offset) = form.offsets.unwrap_or((None, None));
+            (
+                tab.symbol.clone(),
+                tab.paper.mark_price(),
+                stop_offset,
+                profit_offset,
+            )
+        };
+        let tab = self.active_tab_mut();
+        crate::account::request_venue_reverse(
+            &mut tab.account,
+            source_ok,
+            symbol,
+            stop_offset,
+            profit_offset,
+            mark,
+        );
+    }
+}
+
+fn execution_strip(
+    target: crate::account::ExecutionTarget,
+    info: Option<&crate::account::AccountInfo>,
+    source_ok: bool,
+    venue_close: Option<String>,
+) -> quantick_ui_model::chrome_toolbar::ExecutionStrip {
+    let target = target.reconcile(info);
+    let to_ui = |target: crate::account::ExecutionTarget| match target {
+        crate::account::ExecutionTarget::Sim => {
+            quantick_ui_model::chrome_toolbar::ExecutionTarget::Sim
+        }
+        crate::account::ExecutionTarget::Prod => {
+            quantick_ui_model::chrome_toolbar::ExecutionTarget::Prod
+        }
+        crate::account::ExecutionTarget::Demo => {
+            quantick_ui_model::chrome_toolbar::ExecutionTarget::Demo
+        }
+    };
+    let venue_blocked = target.account_mode().and_then(|mode| {
+        crate::account::trade_block(source_ok, mode, info).map(|block| block.explanation())
+    });
+    quantick_ui_model::chrome_toolbar::ExecutionStrip {
+        target: to_ui(target),
+        targets: crate::account::ExecutionTarget::visible(info)
+            .into_iter()
+            .map(to_ui)
+            .collect(),
+        venue_blocked,
+        venue_close: target.account_mode().and(venue_close),
     }
 }
