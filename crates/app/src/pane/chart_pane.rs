@@ -31,6 +31,7 @@ use crate::toolrail::Tool;
 use super::context_menu::ContextPress;
 use super::menus::{PaneMenuHosts, PaneMenuIntent, PaneMenuView, TapeMenuView};
 use super::*;
+use crate::paper_trading::VenueMenuHost;
 
 #[cfg(test)]
 impl ChartPane {
@@ -893,6 +894,11 @@ impl ChartPane {
                 self.menu_parts(chrome.capabilities, chrome.style, strategies);
             let hosts = PaneMenuHosts {
                 paper: &mut *chrome.paper,
+                venue: chrome.venue.as_mut().map(|session| VenueMenuHost {
+                    session,
+                    symbol: chrome.venue_symbol,
+                    source_ok: chrome.venue_source_ok,
+                }),
             };
             menu.draw_layer_menu(ui, &view, model, hosts)
         };

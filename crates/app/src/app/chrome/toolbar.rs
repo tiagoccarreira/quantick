@@ -105,6 +105,7 @@ pub(in crate::app) fn draw(app: &mut QuantickApp, ctx: &egui::Context) {
         .and_then(|snap| snap.positions.close_label());
     let execution = execution_strip(
         tab.account.ticket.target,
+        tab.account.ticket.one_click,
         account_info.as_ref(),
         source_ok,
         venue_close,
@@ -267,6 +268,9 @@ impl QuantickApp {
             ToolbarAction::VenueClose => self.venue_close(),
             ToolbarAction::VenueReverse => self.venue_reverse(),
             ToolbarAction::SetExecutionTarget(target) => self.set_execution_target(target),
+            ToolbarAction::SetOneClick(on) => {
+                self.active_tab_mut().account.ticket.set_one_click(on);
+            }
         }
     }
 
@@ -380,6 +384,7 @@ impl QuantickApp {
 
 fn execution_strip(
     target: crate::account::ExecutionTarget,
+    one_click: bool,
     info: Option<&crate::account::AccountInfo>,
     source_ok: bool,
     venue_close: Option<String>,
@@ -407,5 +412,6 @@ fn execution_strip(
             .collect(),
         venue_blocked,
         venue_close: target.account_mode().and(venue_close),
+        one_click,
     }
 }

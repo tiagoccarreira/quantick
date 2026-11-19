@@ -751,9 +751,9 @@ fn with_flow_pane<R>(
         footprint: footprint_config,
         layers: &mut workspace.layers_mut().actions,
         venue_position: None,
-            venue: None,
-            venue_symbol: "",
-            venue_source_ok: false,
+        venue: None,
+        venue_symbol: "",
+        venue_source_ok: false,
     };
     body(&mut tab.flow_pane, &mut chrome)
 }

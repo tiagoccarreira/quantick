@@ -749,7 +749,8 @@ impl ChartPane {
             .map(|session| session.chart_drag)
             .unwrap_or_default();
         let candles = crate::bands::drawing_area(frame.chart_rect, self.frame.candles_right);
-        let tag_right = crate::paper_trading::paint_ctx::tag_band(candles, frame.chart_rect).right();
+        let tag_right =
+            crate::paper_trading::paint_ctx::tag_band(candles, frame.chart_rect).right();
         let hovering = crate::account::draw_with_pointer(
             frame.painter,
             frame.chart_rect,

@@ -136,6 +136,17 @@ fn the_execution_target_opens_on_sim() {
 }
 
 #[test]
+fn one_click_persists_across_load() {
+    crate::store_home::next_test_home();
+    let mut ticket = VenueTicket::default();
+    assert!(!ticket.one_click);
+    ticket.set_one_click(true);
+    assert!(VenueTicket::load().one_click);
+    ticket.set_one_click(false);
+    assert!(!VenueTicket::load().one_click);
+}
+
+#[test]
 fn visible_targets_hide_demo_on_a_real_account() {
     assert_eq!(
         ExecutionTarget::visible(None),

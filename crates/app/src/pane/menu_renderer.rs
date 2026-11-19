@@ -1,5 +1,6 @@
 //! The single renderer for the pane's concrete headless menu grammar.
 use super::PaneContextMenu;
+use super::menus::TradeMenu;
 use eframe::egui;
 use quantick_chart_interaction::pane::{Effect, Intent, MenuIntent, Model, update};
 use quantick_chart_interaction::pane_menu::{Entry, Event, Kind, Trace};
@@ -9,7 +10,7 @@ pub(super) fn render(
     menu: &mut PaneContextMenu,
     model: &mut Model,
     entries: &[Entry],
-    mut paper: Option<&mut crate::paper_trading::PaperTrading>,
+    mut trade: Option<&mut TradeMenu<'_>>,
 ) -> Vec<MenuIntent> {
     let palette = crate::theme::get(ui.ctx());
     let mut out = Vec::new();
@@ -111,13 +112,13 @@ pub(super) fn render(
                 }
                 Kind::Submenu(children) => Some(
                     ui.menu_button(&entry.label, |ui| {
-                        out.extend(render(ui, menu, model, children, paper.as_deref_mut()))
+                        out.extend(render(ui, menu, model, children, trade.as_deref_mut()))
                     })
                     .response,
                 ),
                 Kind::Indent { id, children } => {
                     ui.indent(*id, |ui| {
-                        out.extend(render(ui, menu, model, children, paper.as_deref_mut()))
+                        out.extend(render(ui, menu, model, children, trade.as_deref_mut()))
                     });
                     None
                 }
@@ -128,26 +129,27 @@ pub(super) fn render(
                     egui::ScrollArea::vertical()
                         .max_height(*maximum_height)
                         .show(ui, |ui| {
-                            out.extend(render(ui, menu, model, children, paper.as_deref_mut()))
+                            out.extend(render(ui, menu, model, children, trade.as_deref_mut()))
                         });
                     None
                 }
                 Kind::Row { children, reverse } => {
                     if *reverse {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            out.extend(render(ui, menu, model, children, paper.as_deref_mut()))
+                            out.extend(render(ui, menu, model, children, trade.as_deref_mut()))
                         });
                     } else {
                         ui.horizontal(|ui| {
-                            out.extend(render(ui, menu, model, children, paper.as_deref_mut()))
+                            out.extend(render(ui, menu, model, children, trade.as_deref_mut()))
                         });
                     }
                     None
                 }
                 Kind::Rename(_) | Kind::Seconds { .. } => edit_value(ui, model, entry, &mut out),
                 Kind::Trade(price) => {
-                    if let Some(paper) = paper.as_deref_mut() {
-                        paper.context_trade_actions(ui, *price);
+                    if let Some(host) = trade.as_mut() {
+                        host.paper
+                            .context_trade_actions(ui, *price, host.venue.as_mut());
                     }
                     None
                 }

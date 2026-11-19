@@ -72,6 +72,8 @@ const HISTORY_SPLIT_GAP_PX: f32 = 6.0;
 pub(crate) const TARGET_CHIP_WIDTH_PX: f32 = 40.0;
 #[cfg(not(test))]
 const TARGET_CHIP_WIDTH_PX: f32 = 40.0;
+/// Width of the 1-click chip beside the target strip.
+const ONE_CLICK_CHIP_WIDTH_PX: f32 = 52.0;
 
 /// TRADE strip width for the collapse plan: target chips + entries (+ exits).
 #[cfg(test)]
@@ -82,7 +84,11 @@ pub(crate) fn trade_strip_width_for_tests(demo_visible: bool) -> f32 {
 /// TRADE strip width for the collapse plan: target chips + entries (+ exits).
 fn trade_strip_width(demo_visible: bool) -> f32 {
     let chips = if demo_visible { 3_f32 } else { 2_f32 };
-    chips * TARGET_CHIP_WIDTH_PX + (chips - 1.0) * TRADE_GAP_PX + TRADE_GAP_PX + W_TRADE
+    chips * TARGET_CHIP_WIDTH_PX
+        + ONE_CLICK_CHIP_WIDTH_PX
+        + chips * TRADE_GAP_PX
+        + TRADE_GAP_PX
+        + W_TRADE
 }
 
 pub use quantick_ui_model::chrome_toolbar::{HistoryButton, ReplaySource};
@@ -513,13 +519,23 @@ fn draw_trade(
             lock,
             ToolbarAction::VenueBuy,
             ToolbarAction::VenueSell,
-            "market via MT5 · Prod asks for confirm before send",
-            "market via MT5 · Prod asks for confirm before send",
+            if execution.one_click {
+                "market via MT5 · 1-click on (no Conta confirm)"
+            } else {
+                "market via MT5 · Prod asks for confirm before send"
+            },
+            if execution.one_click {
+                "market via MT5 · 1-click on (no Conta confirm)"
+            } else {
+                "market via MT5 · Prod asks for confirm before send"
+            },
         )
     };
     let chips = execution.targets.len() as f32;
-    let chip_run =
-        chips * TARGET_CHIP_WIDTH_PX + (chips - 1.0).max(0.0) * TRADE_GAP_PX + TRADE_GAP_PX;
+    let chip_run = chips * TARGET_CHIP_WIDTH_PX
+        + ONE_CLICK_CHIP_WIDTH_PX
+        + chips * TRADE_GAP_PX
+        + TRADE_GAP_PX;
     let flat = chip_run + 2.0 * TRADE_ENTRY_WIDTH_PX + TRADE_GAP_PX;
     let show_close = if sim {
         paper.close.is_some()
@@ -655,6 +671,9 @@ fn draw_target_chips(
             )
             .on_hover_text(match target {
                 ExecutionTarget::Sim => "platform simulator — never hits MetaTrader",
+                ExecutionTarget::Prod if execution.one_click => {
+                    "connected MT5 real account — 1-click sends without Conta confirm"
+                }
                 ExecutionTarget::Prod => "connected MT5 real account — confirm before send",
                 ExecutionTarget::Demo => "connected MT5 demo account",
             })
@@ -662,6 +681,29 @@ fn draw_target_chips(
         {
             actions.push(ToolbarAction::SetExecutionTarget(target));
         }
+    }
+    let on = execution.one_click;
+    let (fill, ink) = if on {
+        (palette.draw_violet(), palette.chip_ink())
+    } else {
+        (egui::Color32::TRANSPARENT, palette.text_muted())
+    };
+    if ui
+        .add_sized(
+            egui::vec2(ONE_CLICK_CHIP_WIDTH_PX, 24.0),
+            egui::Button::new(egui::RichText::new("1-click").color(ink).small())
+                .fill(fill)
+                .stroke(egui::Stroke::new(1.0_f32, palette.border()))
+                .rounding(egui::Rounding::same(9.0)),
+        )
+        .on_hover_text(if on {
+            "1-click on — Prod orders skip Conta confirm (click to require confirm again)"
+        } else {
+            "1-click off — Prod still asks Conta confirm (click to send without confirm)"
+        })
+        .clicked()
+    {
+        actions.push(ToolbarAction::SetOneClick(!on));
     }
 }
 

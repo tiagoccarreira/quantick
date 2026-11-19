@@ -96,9 +96,18 @@ impl PaneLayerRead<'_> {
     }
 }
 
+pub(crate) use crate::paper_trading::VenueMenuHost;
+
 /// The host that still draws, and writes, its own entries in the menu.
 pub(crate) struct PaneMenuHosts<'a> {
     pub(crate) paper: &'a mut PaperTrading,
+    pub(crate) venue: Option<VenueMenuHost<'a>>,
+}
+
+/// What [`super::menu_renderer`] needs to place a right-click trade.
+pub(crate) struct TradeMenu<'a> {
+    pub(crate) paper: &'a mut PaperTrading,
+    pub(crate) venue: Option<VenueMenuHost<'a>>,
 }
 
 use quantick_chart_interaction::pane::{Intent, update};
@@ -274,6 +283,10 @@ impl PaneContextMenu {
             self.object_rects.clear();
         }
         let entries = menu::describe(model, &facts);
-        super::menu_renderer::render(ui, self, model, &entries, Some(hosts.paper))
+        let mut trade = TradeMenu {
+            paper: hosts.paper,
+            venue: hosts.venue,
+        };
+        super::menu_renderer::render(ui, self, model, &entries, Some(&mut trade))
     }
 }

@@ -129,9 +129,7 @@ fn paint_position(
             },
         ));
         let tag = position_tag(frame, entry_y, color, &side_text, points);
-        let over_tag = frame
-            .pointer
-            .is_some_and(|p| tag.expand(4.0).contains(p));
+        let over_tag = frame.pointer.is_some_and(|p| tag.expand(4.0).contains(p));
         let reveal = line_hover || over_tag;
         hovering |= over_tag;
 
@@ -142,8 +140,16 @@ fn paint_position(
                 price,
                 BracketLeg::Stop,
                 appearance.sell(),
-                matches!(drag, VenueChartDrag::Amend { leg: BracketLeg::Stop, .. }
-                    | VenueChartDrag::Create { leg: BracketLeg::Stop, .. }),
+                matches!(
+                    drag,
+                    VenueChartDrag::Amend {
+                        leg: BracketLeg::Stop,
+                        ..
+                    } | VenueChartDrag::Create {
+                        leg: BracketLeg::Stop,
+                        ..
+                    }
+                ),
             );
         } else if reveal && frame.takes_input {
             hovering |= paint_handle(frame, entry_y, BracketLeg::Stop, appearance.sell(), side);
@@ -154,8 +160,16 @@ fn paint_position(
                 price,
                 BracketLeg::Target,
                 appearance.buy(),
-                matches!(drag, VenueChartDrag::Amend { leg: BracketLeg::Target, .. }
-                    | VenueChartDrag::Create { leg: BracketLeg::Target, .. }),
+                matches!(
+                    drag,
+                    VenueChartDrag::Amend {
+                        leg: BracketLeg::Target,
+                        ..
+                    } | VenueChartDrag::Create {
+                        leg: BracketLeg::Target,
+                        ..
+                    }
+                ),
             );
         } else if reveal && frame.takes_input {
             hovering |= paint_handle(frame, entry_y, BracketLeg::Target, appearance.buy(), side);
@@ -387,11 +401,7 @@ fn handle_rect(tag_right: f32, entry_y: f32, leg: BracketLeg, side: Side) -> egu
         (leg, side),
         (BracketLeg::Stop, Side::Buy) | (BracketLeg::Target, Side::Sell)
     );
-    let y = if down {
-        entry_y + 22.0
-    } else {
-        entry_y - 22.0
-    };
+    let y = if down { entry_y + 22.0 } else { entry_y - 22.0 };
     let x = tag_right - HANDLE_PX - 4.0;
     egui::Rect::from_center_size(egui::pos2(x, y), egui::vec2(HANDLE_PX, HANDLE_H))
 }
@@ -454,7 +464,15 @@ fn level_line(
 fn gutter_chip(frame: &VenueChartFrame<'_>, y: f32, color: egui::Color32, text: &str) {
     let appearance = theme::get(frame.painter.ctx());
     let ink = crate::paper_chrome::trade_action_ink(&appearance, color);
-    crate::pointer_compass::paint_price_tag(frame.painter, frame.axis_x, y, text.to_owned(), None, color, ink);
+    crate::pointer_compass::paint_price_tag(
+        frame.painter,
+        frame.axis_x,
+        y,
+        text.to_owned(),
+        None,
+        color,
+        ink,
+    );
 }
 
 fn chip_tag(frame: &VenueChartFrame<'_>, y: f32, fill: egui::Color32, text: &str) {
@@ -466,11 +484,19 @@ fn chip_tag(frame: &VenueChartFrame<'_>, y: f32, fill: egui::Color32, text: &str
     let size = egui::vec2(galley.size().x + 10.0, 18.0);
     let right = frame.tag_right.min(frame.axis_x - 4.0);
     let rect = egui::Rect::from_center_size(
-        egui::pos2(right - size.x / 2.0, y.clamp(frame.chart_rect.top() + 10.0, frame.chart_rect.bottom() - 10.0)),
+        egui::pos2(
+            right - size.x / 2.0,
+            y.clamp(
+                frame.chart_rect.top() + 10.0,
+                frame.chart_rect.bottom() - 10.0,
+            ),
+        ),
         size,
     );
     frame.painter.rect_filled(rect, 3.0, fill);
-    frame.painter.galley(rect.left_top() + egui::vec2(5.0, 2.0), galley, ink);
+    frame
+        .painter
+        .galley(rect.left_top() + egui::vec2(5.0, 2.0), galley, ink);
 }
 
 fn position_tag(
@@ -491,19 +517,20 @@ fn position_tag(
         .layout_no_wrap(text, appearance.mono_font(11.0), ink);
     let size = egui::vec2(galley.size().x + 12.0, 18.0);
     let right = frame.tag_right.min(frame.axis_x - 4.0);
-    let center_y = y.clamp(frame.chart_rect.top() + 10.0, frame.chart_rect.bottom() - 10.0);
+    let center_y = y.clamp(
+        frame.chart_rect.top() + 10.0,
+        frame.chart_rect.bottom() - 10.0,
+    );
     let rect = egui::Rect::from_center_size(egui::pos2(right - size.x / 2.0, center_y), size);
     frame.painter.rect_filled(rect, 3.0, fill);
-    frame.painter.galley(rect.left_top() + egui::vec2(6.0, 2.0), galley, ink);
+    frame
+        .painter
+        .galley(rect.left_top() + egui::vec2(6.0, 2.0), galley, ink);
     rect
 }
 
 fn format_profit(profit: Decimal, currency: Option<&str>) -> String {
-    let sign = if profit > Decimal::ZERO {
-        "+"
-    } else {
-        ""
-    };
+    let sign = if profit > Decimal::ZERO { "+" } else { "" };
     match currency {
         Some(c) => format!("{sign}{} {c}", fmt_decimal(profit)),
         None => format!("{sign}{}", fmt_decimal(profit)),

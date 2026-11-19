@@ -74,6 +74,8 @@ pub enum ToolbarAction {
     VenueReverse,
     /// Switch where Buy/Sell go: Sim (paper) or Prod/Demo (MT5).
     SetExecutionTarget(ExecutionTarget),
+    /// Prod sends without Conta confirm when true.
+    SetOneClick(bool),
 }
 
 /// Where the toolbar Buy/Sell send: platform simulator or MT5.
@@ -105,6 +107,8 @@ pub struct ExecutionStrip {
     pub venue_blocked: Option<String>,
     /// Close label while a venue position is open (`Close 1 LONG`).
     pub venue_close: Option<String>,
+    /// Prod skips Conta confirm (1-click).
+    pub one_click: bool,
 }
 
 impl Default for ExecutionStrip {
@@ -114,6 +118,7 @@ impl Default for ExecutionStrip {
             targets: vec![ExecutionTarget::Prod, ExecutionTarget::Sim],
             venue_blocked: None,
             venue_close: None,
+            one_click: false,
         }
     }
 }
@@ -261,6 +266,7 @@ impl Snapshot {
             }
             Action::OpenAccountList => self.paper.notice.is_some(),
             Action::SetExecutionTarget(_) => true,
+            Action::SetOneClick(_) => true,
             _ => true,
         }
     }

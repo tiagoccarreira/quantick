@@ -89,6 +89,13 @@ pub(super) const ROWS: &[UiBehaviour] = &[
         mapping: capability!("trade.order.place"),
     },
     UiBehaviour {
+        id: "trade.execution.one_click.set",
+        title: "Skip Conta confirm on Prod (1-click)",
+        reach: "toolbar trade group 1-click chip",
+        keys: &[(Source::ToolbarAction, "SetOneClick")],
+        mapping: capability!("trade.order.place"),
+    },
+    UiBehaviour {
         id: "trade.market.buy",
         title: "Buy at market, simulated",
         reach: "toolbar trade group, Trading panel, Shift+B",

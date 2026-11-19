@@ -534,6 +534,8 @@ pub struct VenueTicket {
     pub sl_text: String,
     /// Absolute TP typed on CONTA for the open position.
     pub tp_text: String,
+    /// When true, Prod sends without the Conta confirm dialog (1-click).
+    pub one_click: bool,
     pub pending: Option<PendingTrade>,
     /// Last line the plate should show (`MT5: …`).
     pub status: Option<String>,
@@ -548,6 +550,7 @@ impl Default for VenueTicket {
             pending_price: String::new(),
             sl_text: String::new(),
             tp_text: String::new(),
+            one_click: false,
             pending: None,
             status: None,
             toast_once: None,
@@ -570,10 +573,20 @@ impl VenueTicket {
             pending_price: String::new(),
             sl_text: String::new(),
             tp_text: String::new(),
+            one_click: saved.one_click,
             pending: None,
             status: None,
             toast_once: None,
         }
+    }
+
+    /// Toggle 1-click Prod sends and remember the choice.
+    pub fn set_one_click(&mut self, on: bool) {
+        if self.one_click == on {
+            return;
+        }
+        self.one_click = on;
+        self.persist();
     }
 
     #[must_use]
@@ -619,6 +632,7 @@ impl VenueTicket {
     pub fn persist(&self) {
         let saved = SavedTicket {
             target: ExecutionTarget::persist(self.target).to_owned(),
+            one_click: self.one_click,
         };
         let Ok(text) = toml::to_string(&saved) else {
             return;
@@ -646,6 +660,9 @@ fn ticket_path() -> std::path::PathBuf {
 struct SavedTicket {
     #[serde(default = "default_target", alias = "selector")]
     target: String,
+    /// Prod sends without Conta confirm when true.
+    #[serde(default)]
+    one_click: bool,
 }
 
 fn default_target() -> String {

@@ -213,6 +213,13 @@ pub struct VenueChartClick {
     pub price: rust_decimal::Decimal,
 }
 
+/// MCP host for the chart context-menu trade section.
+pub struct VenueMenuHost<'a> {
+    pub session: &'a mut crate::account::VenueSession,
+    pub symbol: &'a str,
+    pub source_ok: bool,
+}
+
 impl std::ops::Deref for PaperTrading {
     type Target = TabPaper<crate::paper_account::PaperAccount>;
 

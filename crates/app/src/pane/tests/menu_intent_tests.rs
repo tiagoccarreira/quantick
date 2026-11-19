@@ -52,6 +52,7 @@ fn menu_frame_over(
                         pane.menu_parts(chrome.capabilities, chrome.style, strategies);
                     let hosts = PaneMenuHosts {
                         paper: &mut *chrome.paper,
+                        venue: None,
                     };
                     intents.extend(menu.draw_layer_menu(ui, &view, model, hosts));
                 });

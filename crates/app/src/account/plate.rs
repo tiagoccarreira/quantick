@@ -464,18 +464,18 @@ fn request_action(
     action: PendingAction,
     block: Option<super::TradeBlock>,
 ) {
-    let needs_confirm = matches!(
-        (session.ticket.target, &action),
-        (
-            ExecutionTarget::Prod,
+    // 1-click skips the Conta Prod dialog; Demo never asked, Sim never reaches here.
+    let needs_confirm = session.ticket.target == ExecutionTarget::Prod
+        && !session.ticket.one_click
+        && matches!(
+            &action,
             PendingAction::Market { .. }
                 | PendingAction::Pending { .. }
                 | PendingAction::ModifySlTp { .. }
                 | PendingAction::DeleteOrder { .. }
                 | PendingAction::Close { .. }
                 | PendingAction::Reverse { .. }
-        )
-    );
+        );
     match allowed_command(block, action.clone()) {
         Err(block) => {
             session

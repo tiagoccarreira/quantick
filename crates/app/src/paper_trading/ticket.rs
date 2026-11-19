@@ -16,9 +16,10 @@ use rust_decimal::Decimal;
 use quantick_paper::desk::ticket::parse_offset;
 
 use super::{
-    ArmedPlacement, PaperTrading, TradingTabAction, cmd, kind_short, kind_word, reveal_folder,
-    side_word_upper, strategies,
+    ArmedPlacement, PaperTrading, TradingTabAction, VenueMenuHost, cmd, kind_short, kind_word,
+    reveal_folder, side_word_upper, strategies,
 };
+use crate::account::{ExecutionTarget, PendingKind};
 use crate::paper_chrome::{caption, financial_text, fmt_decimal, pill_toggle, points_color};
 use crate::paper_report::LedgerAction;
 use crate::theme;
@@ -39,10 +40,30 @@ impl PaperTrading {
     /// clicked price. Invalid types stay visible but disabled, wearing the
     /// sim core's own rejection text — the same curriculum the toasts teach.
     /// Market entry remains in the trading ticket and its hotkeys.
-    pub fn context_trade_actions(&mut self, ui: &mut egui::Ui, raw_price: f64) {
+    ///
+    /// When the toolbar selector is Prod/Demo and a venue host is present,
+    /// clicks go to MT5 pending (same path as chart-arm). Sim stays local.
+    pub fn context_trade_actions(
+        &mut self,
+        ui: &mut egui::Ui,
+        raw_price: f64,
+        venue: Option<&mut VenueMenuHost<'_>>,
+    ) {
         let palette = theme::get(ui.ctx());
+        let target = venue
+            .as_ref()
+            .map(|host| host.session.ticket.target)
+            .unwrap_or(ExecutionTarget::Sim);
+        let heading = match target {
+            ExecutionTarget::Sim => "trade · Sim",
+            ExecutionTarget::Prod if venue.as_ref().is_some_and(|h| h.session.ticket.one_click) => {
+                "trade · Prod 1-click"
+            }
+            ExecutionTarget::Prod => "trade · Prod",
+            ExecutionTarget::Demo => "trade · Demo",
+        };
         ui.label(
-            egui::RichText::new("trade")
+            egui::RichText::new(heading)
                 .font(palette.body_font(11.0))
                 .color(palette.text_muted()),
         );
@@ -66,6 +87,7 @@ impl PaperTrading {
             (Side::Sell, EntryKind::Limit, price > mark),
             (Side::Sell, EntryKind::Stop, price < mark),
         ];
+        let via_venue = matches!(target, ExecutionTarget::Prod | ExecutionTarget::Demo);
         for (side, kind, valid) in entries {
             let label = format!(
                 "{} {quantity} {} @ {}",
@@ -81,10 +103,57 @@ impl PaperTrading {
                 .add_enabled(valid, egui::Button::new(label))
                 .on_disabled_hover_text(reason.to_string());
             if response.clicked() {
-                self.place_resting(side, kind, raw_price);
+                if via_venue {
+                    if let Some(host) = venue {
+                        self.place_venue_resting(host, side, kind, price, mark);
+                    }
+                } else {
+                    self.place_resting(side, kind, raw_price);
+                }
                 ui.close_menu();
+                return;
             }
         }
+    }
+
+    fn place_venue_resting(
+        &mut self,
+        host: &mut VenueMenuHost<'_>,
+        side: Side,
+        kind: EntryKind,
+        price: Decimal,
+        mark: Decimal,
+    ) {
+        let form = self.paper.desk.ticket.form();
+        let Some(volume) = form.quantity.ok() else {
+            host.session
+                .ticket
+                .announce("MT5: quantity must be a positive number");
+            return;
+        };
+        let (stop_offset, profit_offset) = form.offsets.unwrap_or((None, None));
+        let pending = match kind {
+            EntryKind::Limit => PendingKind::Limit,
+            EntryKind::Stop => PendingKind::Stop,
+            EntryKind::Market => {
+                host.session
+                    .ticket
+                    .announce("MT5: context menu places limit or stop");
+                return;
+            }
+        };
+        crate::account::request_venue_entry(
+            host.session,
+            host.source_ok,
+            host.symbol.to_owned(),
+            side,
+            volume,
+            Some(pending),
+            Some(mark),
+            Some(price),
+            stop_offset,
+            profit_offset,
+        );
     }
 
     // ------------------------------------------------------------------
