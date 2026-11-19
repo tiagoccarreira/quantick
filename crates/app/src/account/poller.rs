@@ -475,15 +475,16 @@ async fn place_pending(
         return TradeNotice::Refused("price inválido".into());
     };
     let order_type = kind.mcp_type(side);
-    // B3 (WIN/WDO) refuses GTC/unspecified pending as retcode 10022 Invalid
-    // expiration — same default the local bridge sends (`ORDER_TIME_DAY`).
+    // MetaTrader MCP defaults `expiration_type` to `gtc`; B3 refuses that as
+    // retcode 10022 Invalid expiration. Schema field is `expiration_type`
+    // (`gtc|day|specified|specified_day`), not MQL5's `type_time`.
     let mut arguments = serde_json::json!({
         "symbol": symbol,
         "type": order_type,
         "volume": lots,
         "price": price_f,
-        "type_time": "ORDER_TIME_DAY",
-        "expiration": 0,
+        "expiration_type": "day",
+        "filling_type": "return",
     });
     with_protection(&mut arguments, stop_loss, take_profit);
     tracing::info!(

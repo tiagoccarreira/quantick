@@ -99,6 +99,7 @@ mod theme;
 mod time_header;
 mod timezone;
 mod toolbar;
+mod venue_hud;
 use surfaces::toolrail;
 mod trade_paint;
 mod ui_state;

@@ -292,7 +292,7 @@ impl ChartPane {
         self.frame.bands = carved;
         super::lane_rail::paint_lane_rail(self, painter, chart_rect);
         self.paper_hud_anchor = self.paint_paper(&frame, axis_x, chrome);
-        self.paint_venue_position(&frame, axis_x, chrome);
+        self.venue_hud_anchor = self.paint_venue_position(&frame, axis_x, chrome);
         self.paint_axis_marks(&frame, axis_x, &levels, time_chip, chrome, &time_marks);
         let clock = layout
             .native_tape
@@ -322,6 +322,7 @@ impl ChartPane {
         chrome: &PaneChrome<'_>,
     ) -> FrameStart {
         self.paper_hud_anchor = None;
+        self.venue_hud_anchor = None;
         self.frame.flow_legend = None;
         // Published before anything can return early, so an empty pane still
         // says where it is.
@@ -649,9 +650,14 @@ impl ChartPane {
     /// after the paper layer), so the condition is restated here rather than
     /// read back.
     fn legend_inset(&self, chrome: &PaneChrome<'_>) -> f32 {
-        let hud_here = chrome.paper_hud_here && chrome.paper.position_summary().is_some();
+        let paper_hud = chrome.paper_hud_here && chrome.paper.position_summary().is_some();
+        let venue_hud = chrome.paper_hud_here
+            && chrome.paper.position_summary().is_none()
+            && chrome
+                .venue_position
+                .is_some_and(|snap| !snap.tickets.is_empty());
         crate::orderflow_render::LEGEND_HEADER_CLEARANCE_PX
-            + crate::indicator_legend::hud_offset_px(hud_here)
+            + crate::indicator_legend::hud_offset_px(paper_hud || venue_hud)
             + crate::indicator_legend::stack_height_px(self.indicators.all(), self.legend_collapsed)
     }
 
@@ -732,16 +738,23 @@ impl ChartPane {
 
     /// Live account tickets: entry tag, SL/TP lines, pending orders.
     /// Switched off, they are only unpainted — the poller keeps asking.
-    fn paint_venue_position(&self, frame: &DrawFrame<'_>, axis_x: f32, chrome: &PaneChrome<'_>) {
+    /// Returns the HUD anchor when this pane owns order entry and a venue
+    /// position is open (and the paper book is flat).
+    fn paint_venue_position(
+        &self,
+        frame: &DrawFrame<'_>,
+        axis_x: f32,
+        chrome: &PaneChrome<'_>,
+    ) -> Option<(egui::Rect, PriceScale)> {
         if !self.layer_visible(ChartLayer::VenuePosition, chrome.style)
             || self
                 .layer_blocked(ChartLayer::VenuePosition, chrome.capabilities)
                 .is_some()
         {
-            return;
+            return None;
         }
         let Some(snapshot) = chrome.venue_position else {
-            return;
+            return None;
         };
         let drag = chrome
             .venue
@@ -778,6 +791,10 @@ impl ChartPane {
             // Grab cursor is set from the input pass; paint only marks hover.
             let _ = hovering;
         }
+        let hud = chrome.paper_hud_here
+            && chrome.paper.position_summary().is_none()
+            && !snapshot.tickets.is_empty();
+        hud.then_some((frame.chart_rect, frame.scale.clone()))
     }
 
     /// The lane's own time axis, under the tape. Returns the automatic

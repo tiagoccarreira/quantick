@@ -541,27 +541,17 @@ fn gutter_chip(frame: &VenueChartFrame<'_>, y: f32, color: egui::Color32, text: 
 }
 
 fn chip_tag(frame: &VenueChartFrame<'_>, y: f32, fill: egui::Color32, text: &str) {
-    let appearance = theme::get(frame.painter.ctx());
-    let ink = crate::paper_chrome::trade_action_ink(&appearance, fill);
-    let galley = frame
-        .painter
-        .layout_no_wrap(text.to_owned(), appearance.mono_font(11.0), ink);
-    let size = egui::vec2(galley.size().x + 10.0, 18.0);
-    let right = frame.tag_right.min(frame.axis_x - 4.0);
-    let rect = egui::Rect::from_center_size(
-        egui::pos2(
-            right - size.x / 2.0,
-            y.clamp(
-                frame.chart_rect.top() + 10.0,
-                frame.chart_rect.bottom() - 10.0,
-            ),
-        ),
-        size,
-    );
-    frame.painter.rect_filled(rect, 3.0, fill);
-    frame
-        .painter
-        .galley(rect.left_top() + egui::vec2(5.0, 2.0), galley, ink);
+    let ctx = crate::paper_trading::paint_ctx::PaintCtx {
+        palette: theme::get(frame.painter.ctx()),
+        painter: frame.painter,
+        chart_rect: frame.chart_rect,
+        tag_right: frame.tag_right,
+        axis_x: frame.axis_x,
+        scale: frame.scale,
+        reserved_chip_y: None,
+        pointer: frame.pointer,
+    };
+    ctx.chip_tag(y, fill, text, false, false);
 }
 
 fn position_tag(
@@ -571,27 +561,18 @@ fn position_tag(
     side_text: &str,
     points: Option<(String, egui::Color32)>,
 ) -> egui::Rect {
-    let appearance = theme::get(frame.painter.ctx());
-    let ink = crate::paper_chrome::trade_action_ink(&appearance, fill);
-    let mut text = side_text.to_owned();
-    if let Some((pnl, _)) = &points {
-        text = format!("{side_text}  {pnl}");
-    }
-    let galley = frame
-        .painter
-        .layout_no_wrap(text, appearance.mono_font(11.0), ink);
-    let size = egui::vec2(galley.size().x + 12.0, 18.0);
-    let right = frame.tag_right.min(frame.axis_x - 4.0);
-    let center_y = y.clamp(
-        frame.chart_rect.top() + 10.0,
-        frame.chart_rect.bottom() - 10.0,
-    );
-    let rect = egui::Rect::from_center_size(egui::pos2(right - size.x / 2.0, center_y), size);
-    frame.painter.rect_filled(rect, 3.0, fill);
-    frame
-        .painter
-        .galley(rect.left_top() + egui::vec2(6.0, 2.0), galley, ink);
-    rect
+    // Same card grammar as the simulator tag (rail, money colour, ×).
+    let ctx = crate::paper_trading::paint_ctx::PaintCtx {
+        palette: theme::get(frame.painter.ctx()),
+        painter: frame.painter,
+        chart_rect: frame.chart_rect,
+        tag_right: frame.tag_right,
+        axis_x: frame.axis_x,
+        scale: frame.scale,
+        reserved_chip_y: None,
+        pointer: frame.pointer,
+    };
+    ctx.position_tag(y, fill, side_text, points)
 }
 
 fn format_profit(profit: Decimal, currency: Option<&str>) -> String {

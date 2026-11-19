@@ -123,6 +123,8 @@ pub struct ChartPane {
     /// draw while the paper layer is painted on the pane that owns order entry. The HUD draws in
     /// `tab.rs`, where the paper host is mutably reachable outside the chrome's shared borrow.
     pub(super) paper_hud_anchor: Option<(egui::Rect, PriceScale)>,
+    /// Same for the MCP Prod/Demo position when the paper book is flat.
+    pub(super) venue_hud_anchor: Option<(egui::Rect, PriceScale)>,
     /// What the right-click that opened the layer menu resolved — see
     /// [`PaneContextMenu`].
     pub context_menu: PaneContextMenu,
@@ -380,6 +382,7 @@ impl ChartPane {
             price_band_label: std::sync::Arc::from(bands::PRICE_BAND_LABEL),
             hover_pos: None,
             paper_hud_anchor: None,
+            venue_hud_anchor: None,
             context_menu: PaneContextMenu::default(),
             drawings,
             gestures: PaneGestures::default(),
@@ -805,6 +808,10 @@ impl ChartPane {
     #[must_use]
     pub fn paper_hud_anchor(&self) -> Option<(egui::Rect, PriceScale)> {
         self.paper_hud_anchor
+    }
+
+    pub fn venue_hud_anchor(&self) -> Option<(egui::Rect, PriceScale)> {
+        self.venue_hud_anchor
     }
 }
 
