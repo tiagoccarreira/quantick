@@ -207,11 +207,12 @@ impl Tab {
         }
 
         // The position HUD rides the pane that owns order entry (the focused
-        // one). It draws here, after the pane pass, because its buttons need
-        // the paper/venue host mutably — inside the pass that borrow is pinned
-        // behind the shared chrome.
-        if let Some((rect, scale)) = self.focused_pane().paper_hud_anchor() {
-            crate::paper_hud::draw(ui.ctx(), rect, &mut self.paper, &scale);
+        // one). Same card for Sim and Prod/Demo — Sim wins while a paper
+        // position is open; otherwise the MCP position owns the corner.
+        if self.paper.position_summary().is_some() {
+            if let Some((rect, scale)) = self.focused_pane().paper_hud_anchor() {
+                crate::paper_hud::draw(ui.ctx(), rect, &mut self.paper, &scale);
+            }
         } else if let Some((rect, scale)) = self.focused_pane().venue_hud_anchor() {
             let source_ok = {
                 let caps = *self.link.feed_capabilities.borrow();

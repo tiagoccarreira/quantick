@@ -47,7 +47,9 @@ fn paper(p: &mut PaperPass<'_>) {
         pointer,
         p.takes_input,
     );
-    if p.hud_here {
+    // Only while a simulated position is open — otherwise the venue HUD
+    // (Prod/Demo) must own this corner, and a flat paper book would steal it.
+    if p.hud_here && p.paper.position_summary().is_some() {
         *p.hud_anchor = Some((p.rect, p.scale));
     }
 }

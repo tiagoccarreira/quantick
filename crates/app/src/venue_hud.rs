@@ -71,6 +71,7 @@ pub fn draw(
     };
     let chip = format!("{route} {word} {qty}");
     let profit = snapshot.total_profit();
+    // Same figure spelling as the simulator HUD (`+3.00 BRL`), with BRL → R$.
     let pnl_text = {
         let sign = if profit > rust_decimal::Decimal::ZERO {
             "+"
@@ -82,10 +83,25 @@ pub fn draw(
             None => format!("{sign}{}", fmt_decimal(profit)),
         }
     };
-    egui::Area::new(egui::Id::new("venue_position_hud"))
+    let caret = match drift {
+        EntryDrift::OnScreen => None,
+        EntryDrift::Above => Some(format!(
+            "{} entry {} above the view",
+            icons::CARET_UP,
+            fmt_decimal(entry),
+        )),
+        EntryDrift::Below => Some(format!(
+            "{} entry {} below the view",
+            icons::CARET_DOWN,
+            fmt_decimal(entry),
+        )),
+    };
+    // Same Area id family as the simulator so only one card owns the corner.
+    egui::Area::new(egui::Id::new("paper_position_hud"))
         .fixed_pos(chart_rect.left_top() + egui::vec2(HUD_MARGIN_PX, HUD_MARGIN_PX))
         .order(egui::Order::Middle)
         .show(ctx, |ui| {
+            // Identical card grammar to `paper_hud::draw`.
             let card = egui::Frame::none()
                 .fill(palette.inset())
                 .stroke(egui::Stroke::new(1.0_f32, palette.border()))
@@ -124,32 +140,16 @@ pub fn draw(
                             palette.mono_font(12.0),
                             points_color(&palette, profit),
                         ))
-                        .on_hover_text("open profit from MetaTrader");
+                        .on_hover_text(
+                            "open profit at the last print, in the figure the ticket leads with",
+                        );
                     });
-                    match drift {
-                        EntryDrift::OnScreen => {}
-                        EntryDrift::Above => {
-                            ui.label(
-                                egui::RichText::new(format!(
-                                    "{} entry {} above the view",
-                                    icons::CARET_UP,
-                                    fmt_decimal(entry),
-                                ))
+                    if let Some(caret) = caret {
+                        ui.label(
+                            egui::RichText::new(caret)
                                 .small()
                                 .color(palette.text_support()),
-                            );
-                        }
-                        EntryDrift::Below => {
-                            ui.label(
-                                egui::RichText::new(format!(
-                                    "{} entry {} below the view",
-                                    icons::CARET_DOWN,
-                                    fmt_decimal(entry),
-                                ))
-                                .small()
-                                .color(palette.text_support()),
-                            );
-                        }
+                        );
                     }
                     let reverse = format!("{} Reverse", icons::ARROWS_LEFT_RIGHT);
                     ui.horizontal(|ui| {
@@ -165,7 +165,9 @@ pub fn draw(
                         };
                         if ui
                             .add(quiet("× Close"))
-                            .on_hover_text(format!("exit the {word} {qty} at market via MT5"))
+                            .on_hover_text(format!(
+                                "exit the {word} {qty} at the next print (market)"
+                            ))
                             .clicked()
                         {
                             request_venue_close(session, source_ok, symbol.to_owned());
@@ -173,7 +175,8 @@ pub fn draw(
                         if ui
                             .add(quiet(&reverse))
                             .on_hover_text(format!(
-                                "close the {word} {qty} and open {opposite} {qty} at market via MT5"
+                                "close the {word} {qty} and open {opposite} {qty} \
+                                 at the next print"
                             ))
                             .clicked()
                         {
