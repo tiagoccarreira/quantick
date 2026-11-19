@@ -31,6 +31,8 @@ pub(super) struct PaperArbitration<'a> {
     pub(super) projection: &'a DrawingProjection<'a>,
     pub(super) drawings: &'a Drawings,
     pub(super) layer_visible: bool,
+    /// MCP account overlay is drawn this frame (entry / SL / TP).
+    pub(super) venue_layer_visible: bool,
     /// The lane divider's grip, or a folded side's rail: chrome, never an aim.
     pub(super) lane_handle: Option<egui::Rect>,
 }
@@ -183,7 +185,34 @@ impl PaperArbitration<'_> {
         {
             ui.ctx().set_cursor_icon(cursor);
         }
-        paper_gesture
+        let venue_gesture = if !paper_gesture
+            && chrome.paper_takes_input
+            && !tool_armed
+            && self.venue_layer_visible
+            && let Some(session) = chrome.venue.as_mut()
+            && let Some(snapshot) = chrome.venue_position
+            && let Some(scale) = drawing_scale.as_ref()
+        {
+            let owned = crate::account::handle_venue_chart(
+                session,
+                snapshot,
+                chrome.venue_symbol,
+                chrome.venue_source_ok,
+                scale,
+                drawing_area,
+                pointer_position.filter(|p| aim_area.contains(*p)),
+                primary_pressed && !range_held && !canvas_claimed && !on_chrome,
+                primary_down,
+                primary_released,
+            );
+            if owned {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+            }
+            owned
+        } else {
+            false
+        };
+        paper_gesture || venue_gesture
     }
 }
 

@@ -657,10 +657,12 @@ impl ChartPane {
             magnet,
         };
         let paper_layer_visible = self.layer_visible(ChartLayer::PaperTrading, chrome.style);
+        let venue_layer_visible = self.layer_visible(ChartLayer::VenuePosition, chrome.style);
         let paper_gesture = primary_button::PaperArbitration {
             projection: &self.drawing_projection(),
             drawings: &self.drawings,
             layer_visible: paper_layer_visible,
+            venue_layer_visible,
             lane_handle: super::lane_rail::lane_handle(self, areas.chart),
         }
         .handle(ui, chrome, &areas, &bands, &pointer, tool_armed);

@@ -680,9 +680,15 @@ impl Tab {
             link,
             paper_drag_pane,
             focus,
+            symbol,
             ..
         } = self;
-        let venue_position = account.link.as_mut().and_then(|link| link.poll());
+        let venue_source_ok = {
+            let caps = *link.feed_capabilities.borrow();
+            caps.open_positions && link.replay.is_none()
+        };
+        let venue_snap = account.link.as_mut().and_then(|link| link.poll()).cloned();
+        let venue_position = venue_snap.as_ref();
         // Cleared before the loop, set by whichever panes it actually walks: a
         // collapsed context column would otherwise keep the rect it last had,
         // and the overlay would paint off the visible canvas.
@@ -763,6 +769,9 @@ impl Tab {
             footprint: chrome.footprint,
             layers: chrome.layers,
             venue_position,
+            venue: Some(account),
+            venue_symbol: symbol.as_str(),
+            venue_source_ok,
         };
         // The paper input pane first, then time panes, then flow. Every pane
         // takes the same two steps in the same order — which is what keeps

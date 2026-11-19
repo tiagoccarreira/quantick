@@ -293,6 +293,33 @@ pub(crate) fn request_venue_entry(
 }
 
 /// Close every open ticket on the chart symbol (toolbar ×).
+/// Chart (or plate) ask to set SL/TP on an open ticket.
+pub(crate) fn request_venue_bracket(
+    session: &mut VenueSession,
+    source_ok: bool,
+    position_ticket: u64,
+    symbol: String,
+    stop_loss: Option<Decimal>,
+    take_profit: Option<Decimal>,
+) {
+    let info = session
+        .link
+        .as_ref()
+        .and_then(AccountLink::cached)
+        .and_then(|snap| snap.info.clone());
+    let block = venue_block(source_ok, session.ticket.target, info.as_ref());
+    request_action(
+        session,
+        PendingAction::ModifySlTp {
+            position_ticket,
+            symbol,
+            stop_loss,
+            take_profit,
+        },
+        block,
+    );
+}
+
 pub(crate) fn request_venue_close(session: &mut VenueSession, source_ok: bool, symbol: String) {
     let info = session
         .link

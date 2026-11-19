@@ -948,6 +948,9 @@ fn drive_navigation_asking(
                 footprint: &footprint,
                 layers: &mut layers,
                 venue_position: None,
+            venue: None,
+            venue_symbol: "",
+            venue_source_ok: false,
             };
             pane.handle_navigation(ui, area, &mut chrome);
         });
@@ -1006,6 +1009,9 @@ fn with_chrome_over<R>(
         footprint: &footprint,
         layers: &mut layers,
         venue_position: None,
+            venue: None,
+            venue_symbol: "",
+            venue_source_ok: false,
     })
 }
 

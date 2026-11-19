@@ -730,7 +730,7 @@ impl ChartPane {
         hud_anchor
     }
 
-    /// Live account tickets: a badge under the legend and a dashed entry line.
+    /// Live account tickets: entry tag, SL/TP lines, pending orders.
     /// Switched off, they are only unpainted — the poller keeps asking.
     fn paint_venue_position(&self, frame: &DrawFrame<'_>, axis_x: f32, chrome: &PaneChrome<'_>) {
         if !self.layer_visible(ChartLayer::VenuePosition, chrome.style)
@@ -743,7 +743,14 @@ impl ChartPane {
         let Some(snapshot) = chrome.venue_position else {
             return;
         };
-        crate::account::draw(
+        let drag = chrome
+            .venue
+            .as_ref()
+            .map(|session| session.chart_drag)
+            .unwrap_or_default();
+        let candles = crate::bands::drawing_area(frame.chart_rect, self.frame.candles_right);
+        let tag_right = crate::paper_trading::paint_ctx::tag_band(candles, frame.chart_rect).right();
+        let hovering = crate::account::draw_with_pointer(
             frame.painter,
             frame.chart_rect,
             self.frame.flow_legend,
@@ -751,7 +758,15 @@ impl ChartPane {
             snapshot,
             &frame.scale,
             axis_x,
+            tag_right,
+            self.hover_pos.filter(|_| chrome.paper_takes_input),
+            drag,
+            chrome.paper_takes_input,
         );
+        if hovering && chrome.paper_takes_input {
+            // Grab cursor is set from the input pass; paint only marks hover.
+            let _ = hovering;
+        }
     }
 
     /// The lane's own time axis, under the tape. Returns the automatic

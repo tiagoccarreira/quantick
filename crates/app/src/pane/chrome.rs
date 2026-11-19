@@ -95,4 +95,10 @@ pub struct PaneChrome<'a> {
     pub layers: &'a mut LayerActions,
     /// Open tickets on this tab's symbol, when the account poller has some.
     pub venue_position: Option<&'a crate::account::PositionSnapshot>,
+    /// MCP session for chart SL/TP gestures (same tab as [`Self::venue_position`]).
+    pub venue: Option<&'a mut crate::account::VenueSession>,
+    /// Chart symbol the venue overlay trades.
+    pub venue_symbol: &'a str,
+    /// Whether the live MetaTrader source is the one on screen (not replay).
+    pub venue_source_ok: bool,
 }
