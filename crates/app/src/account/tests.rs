@@ -45,7 +45,7 @@ fn two_tickets_on_the_same_paper_sum_pnl_and_average_the_entry() {
     assert_eq!(snapshot.net_side(), Some(Side::Sell));
     assert_eq!(
         badge_lines(&snapshot),
-        ["V 1 @ 172460", "V 1 @ 172480", "aberto \u{2212}180 BRL"]
+        ["V 1 @ 172460", "V 1 @ 172480", "aberto \u{2212}180 R$"]
     );
 }
 
@@ -84,7 +84,7 @@ fn parse_keeps_the_chart_symbol_and_drops_the_others() {
     assert_eq!(snapshot.total_profit(), Decimal::from(-180));
     assert_eq!(
         badge_lines(&snapshot),
-        ["V 1 @ 172460", "aberto \u{2212}180 BRL"]
+        ["V 1 @ 172460", "aberto \u{2212}180 R$"]
     );
 }
 

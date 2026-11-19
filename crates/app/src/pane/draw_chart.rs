@@ -751,6 +751,13 @@ impl ChartPane {
         let candles = crate::bands::drawing_area(frame.chart_rect, self.frame.candles_right);
         let tag_right =
             crate::paper_trading::paint_ctx::tag_band(candles, frame.chart_rect).right();
+        let route_word = match chrome.venue.as_ref().map(|session| session.ticket.target) {
+            Some(crate::account::ExecutionTarget::Demo) => "DEMO",
+            _ => "PROD",
+        };
+        let money = chrome.paper.account.symbol_money();
+        let point_value = money.map(|m| m.point_value);
+        let currency_fallback = money.map(|m| m.currency.code());
         let hovering = crate::account::draw_with_pointer(
             frame.painter,
             frame.chart_rect,
@@ -763,6 +770,9 @@ impl ChartPane {
             self.hover_pos.filter(|_| chrome.paper_takes_input),
             drag,
             chrome.paper_takes_input,
+            route_word,
+            point_value,
+            currency_fallback,
         );
         if hovering && chrome.paper_takes_input {
             // Grab cursor is set from the input pass; paint only marks hover.

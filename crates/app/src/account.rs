@@ -216,12 +216,22 @@ pub fn badge_lines(snapshot: &PositionSnapshot) -> Vec<String> {
         })
         .collect();
     let mut pnl = format!("aberto {}", fmt_open_pnl(snapshot.total_profit()));
-    if let Some(currency) = snapshot.currency() {
+    if let Some(currency) = snapshot.currency().map(display_currency) {
         pnl.push(' ');
         pnl.push_str(currency);
     }
     lines.push(pnl);
     lines
+}
+
+/// Chart / badge money unit: BRL reads as the trader's `R$`.
+#[must_use]
+pub(crate) fn display_currency(code: &str) -> &str {
+    if code.eq_ignore_ascii_case("BRL") {
+        "R$"
+    } else {
+        code
+    }
 }
 
 fn fmt_open_pnl(value: Decimal) -> String {
@@ -385,6 +395,7 @@ pub fn spawn(settings: &MetaTraderSettings, symbol: String) -> Option<AccountLin
 }
 
 /// Full MCP overlay: lines plus the in-flight drag preview.
+#[allow(clippy::too_many_arguments)]
 pub fn draw_with_pointer(
     painter: &egui::Painter,
     chart_rect: egui::Rect,
@@ -397,6 +408,9 @@ pub fn draw_with_pointer(
     pointer: Option<egui::Pos2>,
     drag: chart::VenueChartDrag,
     takes_input: bool,
+    route_word: &str,
+    point_value: Option<Decimal>,
+    currency_fallback: Option<&str>,
 ) -> bool {
     if snapshot.is_empty() {
         return false;
@@ -412,6 +426,9 @@ pub fn draw_with_pointer(
             tag_right,
             pointer,
             takes_input,
+            route_word,
+            point_value,
+            currency_fallback,
         },
         snapshot,
         drag,

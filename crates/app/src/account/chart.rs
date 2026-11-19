@@ -8,7 +8,7 @@ use rust_decimal::Decimal;
 use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
 
 use super::plate::request_venue_bracket;
-use super::{OpenTicket, PendingOrder, PositionSnapshot, VenueSession};
+use super::{OpenTicket, PendingKind, PendingOrder, PositionSnapshot, VenueSession};
 use crate::chart::PriceScale;
 use crate::paper_chrome::fmt_decimal;
 use crate::theme;
@@ -58,6 +58,12 @@ pub struct VenueChartFrame<'a> {
     pub pointer: Option<egui::Pos2>,
     /// When false, paint only — other panes show the same facts without grab.
     pub takes_input: bool,
+    /// `PROD` / `DEMO` — same register as the simulator's `SIM` chip.
+    pub route_word: &'a str,
+    /// Declared / catalog point value for SL/TP money labels; `None` keeps price.
+    pub point_value: Option<Decimal>,
+    /// Fallback currency when the MCP ticket omits one (catalog / account).
+    pub currency_fallback: Option<&'a str>,
 }
 
 /// Paint badge, entry (with on-line tag), SL/TP, pending orders; returns whether
@@ -86,6 +92,16 @@ pub fn paint(
         hovering |= paint_pending(frame, order);
     }
     hovering
+}
+
+fn money_currency<'a>(
+    snapshot: &'a PositionSnapshot,
+    frame: &VenueChartFrame<'a>,
+) -> Option<&'a str> {
+    snapshot
+        .currency()
+        .or(frame.currency_fallback)
+        .map(super::display_currency)
 }
 
 fn paint_position(
@@ -118,10 +134,12 @@ fn paint_position(
             Side::Buy => "LONG",
             Side::Sell => "SHORT",
         };
-        let side_text = format!("{} {}", fmt_decimal(volume), word);
+        // Same chip grammar as the simulator: `SIM LONG 1` → `PROD LONG 1`.
+        let side_text = format!("{} {word} {}", frame.route_word, fmt_decimal(volume));
         let profit = snapshot.total_profit();
+        let currency = money_currency(snapshot, frame);
         let points = Some((
-            format_profit(profit, snapshot.currency()),
+            format_profit(profit, currency),
             if profit >= Decimal::ZERO {
                 appearance.buy()
             } else {
@@ -137,9 +155,13 @@ fn paint_position(
         if let Some(price) = sl_price {
             hovering |= paint_leg(
                 frame,
+                entry,
+                volume,
+                side,
                 price,
                 BracketLeg::Stop,
                 appearance.sell(),
+                currency,
                 matches!(
                     drag,
                     VenueChartDrag::Amend {
@@ -157,9 +179,13 @@ fn paint_position(
         if let Some(price) = tp_price {
             hovering |= paint_leg(
                 frame,
+                entry,
+                volume,
+                side,
                 price,
                 BracketLeg::Target,
                 appearance.buy(),
+                currency,
                 matches!(
                     drag,
                     VenueChartDrag::Amend {
@@ -191,11 +217,16 @@ fn live_brackets(ticket: &OpenTicket, drag: VenueChartDrag) -> (Option<Decimal>,
     (sl, tp)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn paint_leg(
     frame: &VenueChartFrame<'_>,
+    entry: Decimal,
+    volume: Decimal,
+    side: Side,
     price: Decimal,
     leg: BracketLeg,
     color: egui::Color32,
+    currency: Option<&str>,
     dragged: bool,
 ) -> bool {
     let Some(raw) = price.to_f64() else {
@@ -208,9 +239,18 @@ fn paint_leg(
     let hovered = hovers(frame, y);
     level_line(frame, y, color, false, hovered, dragged);
     gutter_chip(frame, y, color, &fmt_decimal(price));
-    let label = match leg {
-        BracketLeg::Stop => format!("SL {}", fmt_decimal(price)),
-        BracketLeg::Target => format!("TP {}", fmt_decimal(price)),
+    // Pill = money (SIM grammar); price stays on the gutter chip.
+    let word = match leg {
+        BracketLeg::Stop => "SL",
+        BracketLeg::Target => "TP",
+    };
+    let label = match frame.point_value {
+        Some(point_value) => {
+            let points = quantick_sim::signed_points(side, entry, price, volume);
+            let money = points * point_value;
+            format!("{word} {}", format_profit(money, currency))
+        }
+        None => format!("{word} {}", fmt_decimal(price)),
     };
     chip_tag(frame, y, color, &label);
     hovered || dragged
@@ -249,7 +289,11 @@ fn paint_handle(
 
 fn paint_pending(frame: &VenueChartFrame<'_>, order: &PendingOrder) -> bool {
     let appearance = theme::get(frame.painter.ctx());
-    let color = appearance.accent();
+    // Same colours and short kind as the simulator's resting entry tag.
+    let color = match order.side {
+        Side::Buy => appearance.buy(),
+        Side::Sell => appearance.sell(),
+    };
     let Some(raw) = order.price.to_f64() else {
         return false;
     };
@@ -264,17 +308,38 @@ fn paint_pending(frame: &VenueChartFrame<'_>, order: &PendingOrder) -> bool {
         Side::Buy => "BUY",
         Side::Sell => "SELL",
     };
-    let label = format!(
-        "{side} {} {}",
-        order.kind.label().to_ascii_uppercase(),
-        fmt_decimal(order.volume)
-    );
+    let kind = match order.kind {
+        PendingKind::Limit => "LMT",
+        PendingKind::Stop => "STP",
+    };
+    let label = format!("{side} {kind} {}", fmt_decimal(order.volume));
     chip_tag(frame, y, color, &label);
+    let currency = frame.currency_fallback.map(super::display_currency);
     if let Some(sl) = order.stop_loss {
-        let _ = paint_leg(frame, sl, BracketLeg::Stop, appearance.sell(), false);
+        let _ = paint_leg(
+            frame,
+            order.price,
+            order.volume,
+            order.side,
+            sl,
+            BracketLeg::Stop,
+            appearance.sell(),
+            currency,
+            false,
+        );
     }
     if let Some(tp) = order.take_profit {
-        let _ = paint_leg(frame, tp, BracketLeg::Target, appearance.buy(), false);
+        let _ = paint_leg(
+            frame,
+            order.price,
+            order.volume,
+            order.side,
+            tp,
+            BracketLeg::Target,
+            appearance.buy(),
+            currency,
+            false,
+        );
     }
     hovered
 }
@@ -534,6 +599,16 @@ fn format_profit(profit: Decimal, currency: Option<&str>) -> String {
     match currency {
         Some(c) => format!("{sign}{} {c}", fmt_decimal(profit)),
         None => format!("{sign}{}", fmt_decimal(profit)),
+    }
+}
+
+#[cfg(test)]
+mod currency_tests {
+    #[test]
+    fn brl_reads_as_real_on_the_chart() {
+        assert_eq!(super::super::display_currency("BRL"), "R$");
+        assert_eq!(super::super::display_currency("brl"), "R$");
+        assert_eq!(super::super::display_currency("USD"), "USD");
     }
 }
 

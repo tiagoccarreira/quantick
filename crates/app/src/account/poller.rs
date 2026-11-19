@@ -475,11 +475,15 @@ async fn place_pending(
         return TradeNotice::Refused("price inválido".into());
     };
     let order_type = kind.mcp_type(side);
+    // B3 (WIN/WDO) refuses GTC/unspecified pending as retcode 10022 Invalid
+    // expiration — same default the local bridge sends (`ORDER_TIME_DAY`).
     let mut arguments = serde_json::json!({
         "symbol": symbol,
         "type": order_type,
         "volume": lots,
         "price": price_f,
+        "type_time": "ORDER_TIME_DAY",
+        "expiration": 0,
     });
     with_protection(&mut arguments, stop_loss, take_profit);
     tracing::info!(
