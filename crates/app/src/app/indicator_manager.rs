@@ -328,8 +328,10 @@ impl IndicatorState {
         let Some(mut rect) = pane.frame.chart_area else {
             return Vec::new();
         };
-        rect.min.y +=
-            indicator_legend::hud_offset_px(pane.paper_hud_anchor().is_some() && position_open);
+        rect.min.y += indicator_legend::hud_offset_px(
+            position_open
+                && (pane.paper_hud_anchor().is_some() || pane.venue_hud_anchor().is_some()),
+        );
         let preview = settings
             .dialog()
             .filter(|dialog| {

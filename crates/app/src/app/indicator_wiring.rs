@@ -259,10 +259,18 @@ impl IndicatorWiring<'_> {
             let visible = !matches!(side, PaneSide::Time(slot) if !split || slot >= shown);
             let tab = self.runtime.active_tab();
             let pane = tab.pane(side);
+            let venue_open = tab
+                .account
+                .link
+                .as_ref()
+                .and_then(crate::account::AccountLink::cached)
+                .is_some_and(|snap| !snap.positions.tickets.is_empty());
+            // Same top-left corner as the Sim card — Prod/Demo must push the
+            // indicator legend down the same 64 px.
             let position_open = visible
                 && pane.frame.chart_area.is_some()
-                && pane.paper_hud_anchor().is_some()
-                && tab.paper.position_summary().is_some();
+                && ((pane.paper_hud_anchor().is_some() && tab.paper.position_summary().is_some())
+                    || (pane.venue_hud_anchor().is_some() && venue_open));
             let tabs = &mut self.runtime.tabs;
             let pane = tabs.runtime_mut(tabs.active_index()).pane_mut(side);
             for action in self.runtime.indicators.draw_legend(
