@@ -173,6 +173,7 @@ mod tests {
                 reverse_hover: String::new(),
                 notice: None,
             },
+            execution: toolbar::ExecutionStrip::default(),
         };
         let mut toolbar = toolbar::State::default();
         let mut popovers = State::default();

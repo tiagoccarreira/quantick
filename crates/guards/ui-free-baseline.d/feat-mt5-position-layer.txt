@@ -1,0 +1,5 @@
+# Token overlay on FeedCapabilities: mcp_configured is operator config
+# (QUANTICK_MT5_MCP_TOKEN / mcp_token), not a fact the feed thread can know.
+# Five production lines in tab.rs; the poller file names egui and is not charged here.
+crates/app +5
+!budget +5

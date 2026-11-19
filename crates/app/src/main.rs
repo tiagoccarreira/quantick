@@ -14,6 +14,7 @@ use quantick_paper::order_strategies;
 #[path = "../../engine/tests/support/seventh_bar.rs"]
 mod bar_extension_fixture;
 
+mod account;
 mod add_widget;
 mod app;
 // The headless chart model, under its old module names so every path in

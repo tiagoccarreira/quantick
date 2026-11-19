@@ -1,0 +1,9 @@
+# Demo/Prod gate, MCP poller, PlacePending/Close/Reverse and absolute
+# brackets. They never name egui; the poller lives in account/poller.rs
+# beside the overlay because the engine forbids network. The plate that
+# draws them lives in plate.rs and is not charged here.
+#
+# +1404 for the write path; +528 after extracting poller.rs (a file that
+# no longer shares account.rs's egui import, so its lines count as UI-free).
+crates/app +1932
+!budget +1932

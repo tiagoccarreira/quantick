@@ -87,6 +87,13 @@ pub(super) const ROWS: &[UiBehaviour] = &[
         mapping: LAYER_SWITCH,
     },
     UiBehaviour {
+        id: "layer.venue_position.toggle",
+        title: "Switch the account position overlay on or off",
+        reach: "trail capsule glyph beside the live strip, pane right-click layer menu",
+        keys: &[(Source::LayerToggle, "VenuePosition")],
+        mapping: LAYER_SWITCH,
+    },
+    UiBehaviour {
         id: "layer.tape_bubbles.toggle",
         title: "Switch the bubbles on the tape on or off",
         reach: "tape capsule glyph, pane right-click layer menu",

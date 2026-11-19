@@ -1460,6 +1460,7 @@ fn the_watched_market_wins_the_slot() {
     }
     frame_tail::settle_paper_panels(
         &mut app.runtime.tabs,
+        &app.config,
         &mut app.surfaces.toast,
         Instant::now(),
     );
@@ -1696,6 +1697,8 @@ fn a_feed_declaring_layout_and_bars_opens_wearing_them() {
                 funding: false,
                 spot_perp_pair: false,
                 order_routing: false,
+                open_positions: false,
+                mcp_configured: false,
             }),
             latency: feed::unsplit_latency(),
             commands: cmd_tx,
@@ -3072,6 +3075,8 @@ fn the_flow_pane_cutting_time_bars_earns_the_venue_prefix() {
                 funding: false,
                 spot_perp_pair: false,
                 order_routing: false,
+                open_positions: false,
+                mcp_configured: false,
             }),
             latency: feed::unsplit_latency(),
             commands: cmd_tx,

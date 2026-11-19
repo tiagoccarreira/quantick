@@ -41,6 +41,8 @@ impl PaneLayerRead<'_> {
             tick_bars: TickMembership::applies_to(self.state.spec()),
             native_candle_prices: self.state.tape_price_step().is_some()
                 && self.state.tape_reference_price().is_some(),
+            open_positions: capabilities.is_some_and(|value| value.open_positions),
+            mcp_configured: capabilities.is_some_and(|value| value.mcp_configured),
             ..tape.map_or_else(LayerFacts::default, layer_facts)
         }
     }

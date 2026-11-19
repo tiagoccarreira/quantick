@@ -220,10 +220,15 @@ fn each_pane_paints_only_the_controls_it_accepts() {
         assert!(rect.right() < area.center().x, "{control:?} stands left");
     }
     let strip = flow_control(&app, HeaderControl::Layer(LayerToggle::LiveStrip));
+    let position = flow_control(&app, HeaderControl::Layer(LayerToggle::VenuePosition));
     let footprint = flow_control(&app, HeaderControl::Layer(LayerToggle::Footprint));
     assert!(
         strip.left() > footprint.right(),
-        "the strip ends the trail's capsule"
+        "the strip sits right of the footprint"
+    );
+    assert!(
+        position.left() > strip.right(),
+        "the position ends the trail's capsule"
     );
     for (control, right_side) in [
         (HeaderControl::Layer(LayerToggle::Bubbles), false),
@@ -231,6 +236,7 @@ fn each_pane_paints_only_the_controls_it_accepts() {
         (HeaderControl::Layer(LayerToggle::Heatmap), false),
         (HeaderControl::Layer(LayerToggle::Footprint), false),
         (HeaderControl::Layer(LayerToggle::LiveStrip), false),
+        (HeaderControl::Layer(LayerToggle::VenuePosition), false),
         (HeaderControl::Layer(LayerToggle::TapeBubbles), true),
         (HeaderControl::Sample(BubbleSample::Tape), true),
         (HeaderControl::Layer(LayerToggle::TapeHeatmap), true),
@@ -757,6 +763,7 @@ fn the_header_is_painted_in_all_three_views() {
             (LayerToggle::Bubbles, candles),
             (LayerToggle::Footprint, candles),
             (LayerToggle::LiveStrip, candles),
+            (LayerToggle::VenuePosition, candles),
             (LayerToggle::TapeBubbles, tape),
             (LayerToggle::TapeHeatmap, tape),
         ] {
@@ -972,6 +979,10 @@ fn the_scene_names_each_header_control_and_its_call() {
     assert!(
         !scene_control_ids(&scene).contains(&id("layer.live_strip")),
         "the strip's glyph goes with the trail's capsule"
+    );
+    assert!(
+        !scene_control_ids(&scene).contains(&id("layer.venue_position")),
+        "the position glyph goes with the trail's capsule"
     );
     let sample = scene_control(&scene, &id("sample.tape"));
     assert_eq!(sample["capability_id"], "orderflow.bubbles.size.set");
@@ -2388,6 +2399,7 @@ fn the_flow_pane_wears_its_band_frame_and_side_headers() {
         (HeaderControl::Layer(LayerToggle::Heatmap), false),
         (HeaderControl::Layer(LayerToggle::Footprint), false),
         (HeaderControl::Layer(LayerToggle::LiveStrip), false),
+        (HeaderControl::Layer(LayerToggle::VenuePosition), false),
         (HeaderControl::TapeWindow, true),
         (HeaderControl::Layer(LayerToggle::TapeBubbles), true),
         (HeaderControl::Sample(BubbleSample::Tape), true),
@@ -2447,10 +2459,10 @@ fn a_closed_side_leaves_one_header_at_full_width() {
     run_frame(&mut app, &ctx);
     assert_eq!(view_of(&app), LaneView::CandlesOnly);
     assert!(control_rect(&app, PaneSide::Flow, HeaderControl::TapeWindow).is_none());
-    let footprint = flow_control(&app, HeaderControl::Layer(LayerToggle::Footprint));
+    let position = flow_control(&app, HeaderControl::Layer(LayerToggle::VenuePosition));
     let area = app.active_tab().flow_pane.frame.area.expect("flow chart");
     assert!(
-        area.right() - footprint.right() < 50.0,
+        area.right() - position.right() < 50.0,
         "at the pane's far end"
     );
 
@@ -2586,6 +2598,7 @@ fn the_headers_paint_no_wrapper_behind_their_icons() {
         LayerToggle::Heatmap,
         LayerToggle::Footprint,
         LayerToggle::LiveStrip,
+        LayerToggle::VenuePosition,
     ];
     let tape = [LayerToggle::TapeBubbles, LayerToggle::TapeHeatmap];
     let capsules: [(PaneSide, &[LayerToggle]); 3] = [

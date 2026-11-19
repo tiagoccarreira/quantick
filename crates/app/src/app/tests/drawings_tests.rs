@@ -729,6 +729,8 @@ fn a_quote_driven_feed_says_so_where_the_side_note_goes() {
                 funding: false,
                 spot_perp_pair: false,
                 order_routing: false,
+                open_positions: false,
+                mcp_configured: false,
             }),
             latency: feed::unsplit_latency(),
             commands: cmd_tx,

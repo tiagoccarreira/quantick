@@ -423,6 +423,8 @@ pub fn spawn(request: ReplayRequest) -> FeedHandle {
             funding: false,
             spot_perp_pair: false,
             order_routing: false,
+            open_positions: false,
+            mcp_configured: false,
         }),
         commands: cmd_tx,
         // A recording has no chain to attribute: its prints are as old as the

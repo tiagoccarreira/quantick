@@ -292,6 +292,7 @@ impl ChartPane {
         self.frame.bands = carved;
         super::lane_rail::paint_lane_rail(self, painter, chart_rect);
         self.paper_hud_anchor = self.paint_paper(&frame, axis_x, chrome);
+        self.paint_venue_position(&frame, axis_x, chrome);
         self.paint_axis_marks(&frame, axis_x, &levels, time_chip, chrome, &time_marks);
         let clock = layout
             .native_tape
@@ -727,6 +728,30 @@ impl ChartPane {
             hud_anchor: &mut hud_anchor,
         });
         hud_anchor
+    }
+
+    /// Live account tickets: a badge under the legend and a dashed entry line.
+    /// Switched off, they are only unpainted — the poller keeps asking.
+    fn paint_venue_position(&self, frame: &DrawFrame<'_>, axis_x: f32, chrome: &PaneChrome<'_>) {
+        if !self.layer_visible(ChartLayer::VenuePosition, chrome.style)
+            || self
+                .layer_blocked(ChartLayer::VenuePosition, chrome.capabilities)
+                .is_some()
+        {
+            return;
+        }
+        let Some(snapshot) = chrome.venue_position else {
+            return;
+        };
+        crate::account::draw(
+            frame.painter,
+            frame.chart_rect,
+            self.frame.flow_legend,
+            self.legend_inset(chrome),
+            snapshot,
+            &frame.scale,
+            axis_x,
+        );
     }
 
     /// The lane's own time axis, under the tape. Returns the automatic

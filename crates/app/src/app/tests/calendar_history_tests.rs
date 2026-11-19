@@ -92,6 +92,8 @@ fn push_feed_app_restoring(
         funding: false,
         spot_perp_pair: false,
         order_routing: false,
+        open_positions: false,
+        mcp_configured: false,
     });
     let mut app = QuantickApp::new(
         test_config(),

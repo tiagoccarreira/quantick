@@ -408,6 +408,22 @@ impl ChartLayer {
         default_on: true,
         projection_demand: false,
     });
+    pub const VenuePosition: Self = Self(&LayerDescriptor {
+        id: "venue_position",
+        label: "account position",
+        hint: "the open position on this source's trading account: a badge under the legend \
+                 and an entry line at the fill. Hiding them draws nothing and closes nothing",
+        source: LayerSource::Local,
+        scope: LayerScope::Pane,
+        persistence: Persistence::Layers,
+        requirement: Requirement::Account,
+        on_tape: false,
+        needs_tape: false,
+        needs_depth: false,
+        capture_gates_visibility: false,
+        default_on: true,
+        projection_demand: false,
+    });
     pub const TradePaint: Self = Self(&LayerDescriptor {
         id: "trade_paint",
         label: "closed trade marks",
@@ -442,7 +458,7 @@ impl ChartLayer {
         projection_demand: false,
     });
 }
-pub const ALL: [ChartLayer; 27] = [
+pub const ALL: [ChartLayer; 28] = [
     ChartLayer::TapeChart,
     ChartLayer::TapeHeatmap,
     ChartLayer::TapeBubbles,
@@ -467,6 +483,7 @@ pub const ALL: [ChartLayer; 27] = [
     ChartLayer::PointerPrice,
     ChartLayer::PointerTime,
     ChartLayer::PaperTrading,
+    ChartLayer::VenuePosition,
     ChartLayer::TradePaint,
     ChartLayer::Drawings,
     ChartLayer::CandleAggression,

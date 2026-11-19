@@ -64,6 +64,65 @@ pub enum ToolbarAction {
     /// The read-only `orders →` notice: open the Trading panel on its
     /// account list.
     OpenAccountList,
+    /// Market buy through the connected MT5 account (Prod/Demo target).
+    VenueBuy,
+    /// Market sell through the connected MT5 account (Prod/Demo target).
+    VenueSell,
+    /// Close every open MT5 ticket on the chart symbol.
+    VenueClose,
+    /// Close the open MT5 tickets and open the other way at market.
+    VenueReverse,
+    /// Switch where Buy/Sell go: Sim (paper) or Prod/Demo (MT5).
+    SetExecutionTarget(ExecutionTarget),
+}
+
+/// Where the toolbar Buy/Sell send: platform simulator or MT5.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecutionTarget {
+    Sim,
+    Prod,
+    Demo,
+}
+
+impl ExecutionTarget {
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Sim => "Sim",
+            Self::Prod => "Prod",
+            Self::Demo => "Demo",
+        }
+    }
+}
+
+/// Prod|Sim(+Demo) strip beside the TRADE buttons.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExecutionStrip {
+    pub target: ExecutionTarget,
+    /// Chips to paint, left to right (Prod, optional Demo, Sim).
+    pub targets: Vec<ExecutionTarget>,
+    /// Why venue Buy/Sell stay dark when Prod/Demo is selected.
+    pub venue_blocked: Option<String>,
+    /// Close label while a venue position is open (`Close 1 LONG`).
+    pub venue_close: Option<String>,
+}
+
+impl Default for ExecutionStrip {
+    fn default() -> Self {
+        Self {
+            target: ExecutionTarget::Sim,
+            targets: vec![ExecutionTarget::Prod, ExecutionTarget::Sim],
+            venue_blocked: None,
+            venue_close: None,
+        }
+    }
+}
+
+impl ExecutionStrip {
+    #[must_use]
+    pub fn demo_visible(&self) -> bool {
+        self.targets.contains(&ExecutionTarget::Demo)
+    }
 }
 
 pub use ToolbarAction as Action;
@@ -113,6 +172,7 @@ pub struct Snapshot {
     pub capabilities: FeedCapabilities,
     pub dock_visible: bool,
     pub paper: quantick_paper::desk::TradeBar,
+    pub execution: ExecutionStrip,
 }
 #[derive(Default)]
 pub struct State {
@@ -168,10 +228,39 @@ impl Snapshot {
             }
             Action::CancelHistory => self.history.status.running(),
             Action::LoadOlderCandles => self.older_candles.is_available(),
-            Action::PaperBuy | Action::PaperSell => self.paper.blocked.is_none(),
-            Action::PaperReverse => self.paper.blocked.is_none() && self.paper.close.is_some(),
-            Action::PaperClose => self.paper.close.is_some(),
+            Action::PaperBuy | Action::PaperSell => {
+                self.execution.target == ExecutionTarget::Sim && self.paper.blocked.is_none()
+            }
+            Action::VenueBuy | Action::VenueSell => {
+                matches!(
+                    self.execution.target,
+                    ExecutionTarget::Prod | ExecutionTarget::Demo
+                ) && self.execution.venue_blocked.is_none()
+            }
+            Action::VenueClose => {
+                matches!(
+                    self.execution.target,
+                    ExecutionTarget::Prod | ExecutionTarget::Demo
+                ) && self.execution.venue_close.is_some()
+                    && self.execution.venue_blocked.is_none()
+            }
+            Action::VenueReverse => {
+                matches!(
+                    self.execution.target,
+                    ExecutionTarget::Prod | ExecutionTarget::Demo
+                ) && self.execution.venue_close.is_some()
+                    && self.execution.venue_blocked.is_none()
+            }
+            Action::PaperReverse => {
+                self.execution.target == ExecutionTarget::Sim
+                    && self.paper.blocked.is_none()
+                    && self.paper.close.is_some()
+            }
+            Action::PaperClose => {
+                self.execution.target == ExecutionTarget::Sim && self.paper.close.is_some()
+            }
             Action::OpenAccountList => self.paper.notice.is_some(),
+            Action::SetExecutionTarget(_) => true,
             _ => true,
         }
     }

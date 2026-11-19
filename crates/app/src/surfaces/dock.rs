@@ -159,23 +159,27 @@ fn draw(
                                 if let Some(sheet) = env.route {
                                     response.route = account_route::draw_route_block(ui, sheet);
                                 }
+                                if let Some(venue) = env.venue.as_mut() {
+                                    crate::account::draw_conta_plate(ui, venue);
+                                    ui.add_space(10.0);
+                                }
                                 env.paper.draw_trading_tab(ui)
                             });
                         match scrolled.inner {
-                                Some(TradingTabAction::PickTradesDir) => {
-                                    response.pick_trades_dir = true;
-                                }
-                                Some(TradingTabAction::CmdTradingChanged) => {
-                                    response.cmd_trading_changed = true;
-                                }
-                                Some(TradingTabAction::OrderStrategiesChanged) => {
-                                    response.order_strategies_changed = true;
-                                }
-                                Some(TradingTabAction::RiskSettingsChanged) => {
-                                    response.risk_settings_changed = true;
-                                }
-                                None => {}
+                            Some(TradingTabAction::PickTradesDir) => {
+                                response.pick_trades_dir = true;
                             }
+                            Some(TradingTabAction::CmdTradingChanged) => {
+                                response.cmd_trading_changed = true;
+                            }
+                            Some(TradingTabAction::OrderStrategiesChanged) => {
+                                response.order_strategies_changed = true;
+                            }
+                            Some(TradingTabAction::RiskSettingsChanged) => {
+                                response.risk_settings_changed = true;
+                            }
+                            None => {}
+                        }
                     }
                     // The ledger manages its own scroll (a virtualised
                     // list with a pinned totals strip).

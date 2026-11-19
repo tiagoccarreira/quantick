@@ -16,8 +16,8 @@ Only a `--features harness` build compiles every declaration, so any other
 build refuses the dump. `cargo test -p quantick-guards` checks
 source/declaration/prose parity. Regenerate after changing either half.
 
-**Which build reads a row.** Rows owned by `launch.rs` are operator
-configuration: the composition root reads them in every build. Every other
+**Which build reads a row.** Rows owned by `launch.rs` and `account.rs` are
+operator configuration: they compile in every build. Every other
 row is a harness hook and exists only in a build with its family's feature —
 `app/control_host.rs` needs `control-harness`; `toolrail.rs` and
 `surfaces/drawing_chrome/` need `drawing-harness`; the quick-range demo needs
@@ -40,6 +40,7 @@ and the one thing a grep of the source cannot supply.
 | Hook | Reaches |
 | --- | --- |
 | `QUANTICK_CONFIG=<toml>` | full feed/symbol config override (use a scratchpad toml; **never** edit the user's root `quantick.toml`) |
+| `QUANTICK_MT5_MCP_TOKEN` | Bearer token for the local MetaTrader MCP that paints the account-position overlay; empty token (shipped `feeds.toml`, or missing `mcp_token`) leaves the Position glyph dark |
 | `QUANTICK_LOG_FORMAT=json` | **newline-delimited JSON on stderr** instead of the human format, one object per event with the span list flattened in. What makes a validation run's log readable by something other than a person: `APP_HEALTH_SUMMARY`, `APP_SLOW_FRAMES` and every feed event become fields to filter on rather than prose to scrape, which is how a capture proves a frame budget held rather than asserting it. Any value other than `json` (case-insensitive) leaves the human format alone. |
 | `QUANTICK_DEFAULT_FEED` / `QUANTICK_DEFAULT_SYMBOL` | startup feed/symbol |
 | `QUANTICK_WINDOW_MAXIMIZED=1` | `scenario-harness` opt-in. the window **maximised** on the first frame. Not a larger `QUANTICK_WINDOW_SIZE`: maximising is what the window manager does, and on Windows at a scale factor other than 1 it is the state where the platform hands the client size in physical pixels where points were due — the chart then lays out a third wider than its own surface and the toolbar's layer group, the price axis, the live strip and the dock rail are painted off the edge (`crates/app/src/window_scale.rs`). No size can reach that state, so without this hook the whole class of defect is invisible to anything but a human clicking the title bar. Pair with `QUANTICK_WINDOW_SIZE` to control what the window restores *down* to |

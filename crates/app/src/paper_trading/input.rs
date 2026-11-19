@@ -8,9 +8,12 @@
 
 use eframe::egui;
 use quantick_paper::desk::{ChartCommand, ChartFrame, CursorHint, HeldKeys, PriceAxis};
+use quantick_sim::EntryKind;
+use rust_decimal::Decimal;
+use rust_decimal::prelude::FromPrimitive;
 
 use super::paint_ctx::{bounds, point, pos};
-use super::{ChartInput, PaperTrading};
+use super::{ChartInput, PaperTrading, VenueChartClick};
 use crate::chart::PriceScale;
 
 /// The chart's scale, as the desk's price axis: the one price-to-pixel law,
@@ -110,10 +113,40 @@ impl PaperTrading {
     /// through the account's own funnel. The host shows the ticket's
     /// complaint, and re-reads the report if a close reached the journal.
     fn apply(&mut self, command: ChartCommand) {
+        if self.venue_armed_route
+            && let ChartCommand::PlaceArmed { armed, raw_price } = command
+        {
+            let kind = match armed.kind {
+                EntryKind::Limit => crate::account::PendingKind::Limit,
+                EntryKind::Stop => crate::account::PendingKind::Stop,
+                EntryKind::Market => {
+                    self.show_toast("MT5: armed click needs limit or stop".into());
+                    return;
+                }
+            };
+            let Some(price) = Decimal::from_f64(raw_price).filter(|value| *value > Decimal::ZERO)
+            else {
+                self.show_toast("MT5: click price is not a number".into());
+                return;
+            };
+            self.venue_click = Some(VenueChartClick {
+                side: armed.side,
+                kind,
+                price,
+            });
+            self.paper.desk.armed = None;
+            self.paper.desk.ruler.clear();
+            return;
+        }
         if let Err(message) = self.paper.carry_out(command) {
             self.show_toast(message);
         }
         self.paper.account.follow_journal();
+    }
+
+    /// Drain a chart click that should become an MT5 pending order.
+    pub fn take_venue_click(&mut self) -> Option<VenueChartClick> {
+        self.venue_click.take()
     }
 
     /// The cursor that announces what is under the pointer; `None` away

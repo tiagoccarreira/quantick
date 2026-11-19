@@ -750,6 +750,7 @@ fn with_flow_pane<R>(
         price_tag: Default::default(),
         footprint: footprint_config,
         layers: &mut workspace.layers_mut().actions,
+        venue_position: None,
     };
     body(&mut tab.flow_pane, &mut chrome)
 }
@@ -1892,6 +1893,8 @@ fn app_backfilled_with(
                 funding: false,
                 spot_perp_pair: false,
                 order_routing: false,
+                open_positions: false,
+                mcp_configured: false,
             }),
             latency: feed::unsplit_latency(),
             commands: cmd_tx,

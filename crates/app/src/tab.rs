@@ -167,6 +167,9 @@ pub struct Tab {
     /// symbol is the same one tab-scoping protects between tabs.
     pub paper: PaperTrading,
 
+    /// Live account overlay and the CONTA ticket for this market.
+    pub account: crate::account::VenueSession,
+
     /// quantick's own chart, and the only one in the default layout.
     pub flow_pane: ChartPane,
     /// The context charts beside it, top to bottom in the left column.
@@ -251,6 +254,7 @@ impl Tab {
             session: quantick_session::TabSession::new(),
             loading,
             paper: PaperTrading::with_trades_dir(trades_dir),
+            account: crate::account::VenueSession::default(),
             paper_drag_pane: None,
             flow_pane: ChartPane::flow(flow_pane_id, spec, symbol.clone()),
             chip_label: String::new(),
@@ -419,7 +423,11 @@ impl Tab {
         // knows whether its symbol has a book or a tape — and every affordance
         // already asks the capability rather than the provider name, so they
         // enable and disable themselves from this one value.
-        *self.link.feed_capabilities.borrow()
+        let mut caps = *self.link.feed_capabilities.borrow();
+        // The token is operator config, not a fact the feed thread can know.
+        caps.mcp_configured =
+            caps.open_positions && crate::account::resolve_token(&config.metatrader).is_some();
+        caps
     }
 }
 

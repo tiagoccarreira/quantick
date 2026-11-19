@@ -90,7 +90,8 @@ fn configuration_is_declared_by_the_composition_root_alone() {
     assert!(configuration.len() <= 20, "{configuration:?}");
     assert_eq!(
         owners().len(),
-        1 + SCENARIO_OWNERS.len()
+        CONFIGURATION.len()
+            + SCENARIO_OWNERS.len()
             + CONTROL_OWNERS.len()
             + DRAWING_OWNERS.len()
             + QUICK_RANGE_OWNERS.len()

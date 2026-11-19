@@ -93,4 +93,6 @@ pub struct PaneChrome<'a> {
     /// Where the layer menu leaves the two switches the pane does not own.
     /// Drained by the app once the canvas is done (see [`LayerActions`]).
     pub layers: &'a mut LayerActions,
+    /// Open tickets on this tab's symbol, when the account poller has some.
+    pub venue_position: Option<&'a crate::account::PositionSnapshot>,
 }

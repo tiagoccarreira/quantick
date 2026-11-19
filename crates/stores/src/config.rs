@@ -1509,6 +1509,8 @@ mod tests {
                 funding: false,
                 spot_perp_pair: false,
                 order_routing: false,
+                open_positions: false,
+                mcp_configured: false,
             }
         );
         assert_eq!(config.side_note("hyperliquid"), None);
@@ -2050,6 +2052,8 @@ mod tests {
         let defaults = MetaTraderSettings::default();
         assert!(defaults.bridge_autostart);
         assert_eq!(defaults.bridge_command.first().unwrap(), "python");
+        assert_eq!(defaults.mcp_url, "http://127.0.0.1:22346/mcp");
+        assert!(defaults.mcp_token.is_empty());
 
         let text = r#"
             default_feed = "mt"

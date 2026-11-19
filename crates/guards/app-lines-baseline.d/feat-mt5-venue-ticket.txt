@@ -1,0 +1,7 @@
+# CONTA ticket: Demo/Prod gate, check-then-send on the MCP poller thread,
+# toolbar Prod|Sim Buy/Sell/Close/Reverse, chart-arm pending, and the
+# Trading-dock plate. Overlay already raised for the read-only poller; this
+# is the write path and its UI, still in app because the engine forbids
+# network and the feed crate is the tick path.
+crates/app +2645
+!budget +2645

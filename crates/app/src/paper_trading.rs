@@ -20,7 +20,7 @@
 use std::path::{Path, PathBuf};
 
 use eframe::egui;
-use quantick_engine::Trade;
+use quantick_engine::{Side, Trade};
 #[cfg(any(feature = "scenario-harness", test))]
 use quantick_paper::desk::CmdPreviewForce;
 #[cfg(any(feature = "scenario-harness", test))]
@@ -192,12 +192,25 @@ pub struct PaperTrading {
     /// once they rest.
     #[cfg_attr(not(any(feature = "scenario-harness", test)), allow(dead_code))]
     capture_orders: Option<quantick_paper::account::CaptureOrders>,
+    /// When true, an armed chart click queues [`Self::venue_click`] instead of
+    /// resting on the paper simulator (Prod/Demo toolbar target).
+    pub venue_armed_route: bool,
+    /// Chart click that should become an MT5 pending order.
+    venue_click: Option<VenueChartClick>,
     /// The tab's desk and account, and the decisions that join them
     /// (`quantick_session::paper`). The account is held with the report and
     /// the export threads beside it; everything the ticket, the dock and the
     /// control plane call by name — `market`, `flatten`, the ruler, the risk
     /// read — is the tab's, reached through `Deref`.
     paper: TabPaper<crate::paper_account::PaperAccount>,
+}
+
+/// One chart click waiting to become a venue pending order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VenueChartClick {
+    pub side: Side,
+    pub kind: crate::account::PendingKind,
+    pub price: rust_decimal::Decimal,
 }
 
 impl std::ops::Deref for PaperTrading {
@@ -264,6 +277,8 @@ impl PaperTrading {
         let host = Self {
             paper: TabPaper::new(crate::paper_account::PaperAccount::with_trades_dir(dir)),
             capture_orders: None,
+            venue_armed_route: false,
+            venue_click: None,
         };
         #[cfg(any(feature = "scenario-harness", test))]
         let host = host.with_launch_hooks();

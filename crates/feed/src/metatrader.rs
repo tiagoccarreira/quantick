@@ -325,6 +325,8 @@ fn session_capabilities(
         spot_perp_pair: false,
         // A live terminal: the account it is logged into can take orders.
         order_routing: true,
+        open_positions: true,
+        mcp_configured: false,
     }
 }
 

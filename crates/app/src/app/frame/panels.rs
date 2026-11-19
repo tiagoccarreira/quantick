@@ -111,13 +111,29 @@ pub(super) fn draw_dock(
     alerts_open: bool,
 ) -> SurfaceResponse {
     let (tabs, route) = (&mut runtime.tabs, runtime.broker.sheet());
-    let Tab { link, paper, .. } = tabs.runtime_mut(tabs.active_index());
+    let tab = tabs.runtime_mut(tabs.active_index());
+    let source_ok = {
+        let caps = *tab.link.feed_capabilities.borrow();
+        caps.open_positions && tab.link.replay.is_none()
+    };
+    let Tab {
+        link,
+        paper,
+        account,
+        symbol,
+        ..
+    } = tab;
     let mut env = BorrowedSurfaceEnv::Paper(PaperPanelEnv {
         alerts_open,
         replay: link.replay.as_ref(),
         paper,
         timezone: runtime.tz,
         route,
+        venue: Some(crate::account::VenuePlateEnv {
+            session: account,
+            symbol,
+            source_ok,
+        }),
     });
     surfaces.draw_slot_unscoped_with_env(
         quantick_ui_model::Slot::LateEdgePanels,

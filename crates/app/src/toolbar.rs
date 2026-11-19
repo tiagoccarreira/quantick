@@ -42,6 +42,7 @@ use quantick_paper::desk::{
     TRADE_REVERSE_WIDTH_PX, W_TRADE,
 };
 use quantick_session::{HistoryPagingOff, fmt_history_span};
+use quantick_ui_model::chrome_toolbar::ExecutionTarget;
 
 /// Height of the toolbar, in pixels (§5 zone 2).
 pub const TOOLBAR_HEIGHT: f32 = 44.0;
@@ -66,6 +67,23 @@ const WINDOW_MENU_RUN_PX: f32 = TOOLBAR_ICON.hit + SEPARATOR_AIR_PX * 2.0 + SEPA
 
 /// Gap between History's main button and its caret, in pixels.
 const HISTORY_SPLIT_GAP_PX: f32 = 6.0;
+/// One Prod/Sim/Demo chip's width in the TRADE strip.
+#[cfg(test)]
+pub(crate) const TARGET_CHIP_WIDTH_PX: f32 = 40.0;
+#[cfg(not(test))]
+const TARGET_CHIP_WIDTH_PX: f32 = 40.0;
+
+/// TRADE strip width for the collapse plan: target chips + entries (+ exits).
+#[cfg(test)]
+pub(crate) fn trade_strip_width_for_tests(demo_visible: bool) -> f32 {
+    trade_strip_width(demo_visible)
+}
+
+/// TRADE strip width for the collapse plan: target chips + entries (+ exits).
+fn trade_strip_width(demo_visible: bool) -> f32 {
+    let chips = if demo_visible { 3_f32 } else { 2_f32 };
+    chips * TARGET_CHIP_WIDTH_PX + (chips - 1.0) * TRADE_GAP_PX + TRADE_GAP_PX + W_TRADE
+}
 
 pub use quantick_ui_model::chrome_toolbar::{HistoryButton, ReplaySource};
 
@@ -110,10 +128,7 @@ impl std::ops::Deref for ToolbarModel<'_> {
 }
 
 /// What the TRADE group shows this frame: the paper desk's
-/// [`TradeBar`](quantick_paper::desk::TradeBar), decided in one read by the
-/// headless desk so the toolbar stays decoupled from the simulator's types.
-/// The faces name side and size only (`SELL 1`) so the buttons never move;
-/// the hovers disclose what the press would do to the open position.
+/// [`TradeBar`](quantick_paper::desk::TradeBar).
 pub type PaperTradeModel = quantick_paper::desk::TradeBar;
 
 pub use quantick_ui_model::chrome_toolbar::Action as ToolbarAction;
@@ -141,10 +156,11 @@ pub fn draw(ctx: &egui::Context, model: &mut ToolbarModel) -> Vec<ToolbarAction>
             };
             let fixed = ui.available_width() - rec_width - WINDOW_MENU_RUN_PX + W_PICKER;
             let fixed = fixed - crate::add_widget::BUTTON_PX - crate::add_widget::GAP_PX;
-            let mut plan = collapse_plan(fixed - capsule::width(ui, &model.capsule), W_TRADE);
+            let trade_w = trade_strip_width(model.execution.demo_visible());
+            let mut plan = collapse_plan(fixed - capsule::width(ui, &model.capsule), trade_w);
             if !plan.trade_inline {
                 model.capsule.compact = true;
-                plan = collapse_plan(fixed - capsule::width(ui, &model.capsule), W_TRADE);
+                plan = collapse_plan(fixed - capsule::width(ui, &model.capsule), trade_w);
             }
             ui.horizontal_centered(|ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
@@ -169,7 +185,7 @@ pub fn draw(ctx: &egui::Context, model: &mut ToolbarModel) -> Vec<ToolbarAction>
                 if plan.trade_inline {
                     row_separator(ui, SEPARATOR_AIR_PX, SEPARATOR_AIR_PX);
                     let trade_left = ui.cursor().left();
-                    draw_trade(ui, &model.paper, &mut actions);
+                    draw_trade(ui, &model.paper, &model.execution, &mut actions);
                     row_separator(ui, SEPARATOR_AIR_PX, 0.0);
                     if let Some(notice) = &model.paper.notice {
                         // Where the group ends with Close and Reverse shown,
@@ -436,17 +452,16 @@ fn draw_history_menu(
     }
 }
 
-/// TRADE: the simulated market entries and, while a position is open, its
-/// exit (`docs/ux/paper-trading.md`). Quantity and brackets live in the
-/// Trading dock tab; the labels disclose them. Gated on the simulator having
-/// seen a price, never on the provider — paper trading works on any feed.
-fn draw_trade(ui: &mut egui::Ui, paper: &PaperTradeModel, actions: &mut Vec<ToolbarAction>) {
+/// TRADE: Prod|Sim(+Demo) selector, market entries, and while Sim has a
+/// position open, its exit. Quantity lives in the Trading dock tab.
+fn draw_trade(
+    ui: &mut egui::Ui,
+    paper: &PaperTradeModel,
+    execution: &quantick_ui_model::chrome_toolbar::ExecutionStrip,
+    actions: &mut Vec<ToolbarAction>,
+) {
     let palette = theme::get(ui.ctx());
-    // The entries speak the chip language: solid side colour, dark ink —
-    // the same grammar as the price chips in the gutter, because the button
-    // and the entry line it will create are one statement. Both wear one
-    // fixed size in every state, the face truncating rather than growing,
-    // so opening a position never slides SELL out from under the pointer.
+    let sim = execution.target == ExecutionTarget::Sim;
     let entry = |ui: &mut egui::Ui, label: &str, fill: egui::Color32, enabled: bool| {
         let response = ui
             .add_enabled_ui(enabled, |ui| {
@@ -482,35 +497,60 @@ fn draw_trade(ui: &mut egui::Ui, paper: &PaperTradeModel, actions: &mut Vec<Tool
         }
         response
     };
-    let enabled = paper.blocked.is_none();
-    let locked = paper.blocked.as_deref().unwrap_or_default();
-    // Left-aligned after History: the exits open right of the entries,
-    // which never move.
-    let flat = 2.0 * TRADE_ENTRY_WIDTH_PX + TRADE_GAP_PX;
-    let width = if paper.close.is_some() { W_TRADE } else { flat };
+    let (entry_enabled, entry_lock, buy_action, sell_action, buy_hover, sell_hover) = if sim {
+        (
+            paper.blocked.is_none(),
+            paper.blocked.as_deref().unwrap_or_default(),
+            ToolbarAction::PaperBuy,
+            ToolbarAction::PaperSell,
+            paper.buy.hover.as_str(),
+            paper.sell.hover.as_str(),
+        )
+    } else {
+        let lock = execution.venue_blocked.as_deref().unwrap_or_default();
+        (
+            execution.venue_blocked.is_none(),
+            lock,
+            ToolbarAction::VenueBuy,
+            ToolbarAction::VenueSell,
+            "market via MT5 · Prod asks for confirm before send",
+            "market via MT5 · Prod asks for confirm before send",
+        )
+    };
+    let chips = execution.targets.len() as f32;
+    let chip_run =
+        chips * TARGET_CHIP_WIDTH_PX + (chips - 1.0).max(0.0) * TRADE_GAP_PX + TRADE_GAP_PX;
+    let flat = chip_run + 2.0 * TRADE_ENTRY_WIDTH_PX + TRADE_GAP_PX;
+    let show_close = if sim {
+        paper.close.is_some()
+    } else {
+        execution.venue_close.is_some()
+    };
+    let width = if show_close { chip_run + W_TRADE } else { flat };
     let row = egui::Layout::left_to_right(egui::Align::Center);
     ui.allocate_ui_with_layout(egui::vec2(width, 24.0), row, |ui| {
         ui.spacing_mut().item_spacing.x = TRADE_GAP_PX;
-        let buy = entry(ui, &paper.buy.face, palette.buy(), enabled)
-            .on_hover_text(&paper.buy.hover)
-            .on_disabled_hover_text(locked);
+        draw_target_chips(ui, execution, actions);
+        let buy = entry(ui, &paper.buy.face, palette.buy(), entry_enabled)
+            .on_hover_text(buy_hover)
+            .on_disabled_hover_text(entry_lock);
         #[cfg(test)]
         ui.data_mut(|data| data.insert_temp(egui::Id::new("toolbar_buy_response"), buy.id));
         if buy.clicked() {
-            actions.push(ToolbarAction::PaperBuy);
+            actions.push(buy_action);
         }
-        let sell = entry(ui, &paper.sell.face, palette.sell(), enabled)
-            .on_hover_text(&paper.sell.hover)
-            .on_disabled_hover_text(locked);
+        let sell = entry(ui, &paper.sell.face, palette.sell(), entry_enabled)
+            .on_hover_text(sell_hover)
+            .on_disabled_hover_text(entry_lock);
         if sell.clicked() {
-            actions.push(ToolbarAction::PaperSell);
+            actions.push(sell_action);
         }
-        // The exit controls, on the same surface as the entries: an open
-        // position must never require a dock dive to leave or flip (audit
-        // pain 1, B2). Outlined, not filled — leaving is deliberate. Fixed
-        // widths too, so a flip never slides the reverse. Close is never
-        // locked; the reverse opens a position, so the entries' lock holds it.
-        if let Some(close) = &paper.close {
+        let close_face = if sim {
+            paper.close.as_deref()
+        } else {
+            execution.venue_close.as_deref()
+        };
+        if let Some(close) = close_face {
             let outlined = |ui: &mut egui::Ui, text: String, width: f32, enabled: bool| {
                 ui.add_enabled_ui(enabled, |ui| {
                     ui.add_sized(
@@ -528,23 +568,45 @@ fn draw_trade(ui: &mut egui::Ui, paper: &PaperTradeModel, actions: &mut Vec<Tool
                 })
                 .inner
             };
-            let button = outlined(ui, format!("× {close}"), TRADE_CLOSE_WIDTH_PX, true)
-                .on_hover_text(format!(
-                    "{close}: exit the open simulated position at the next print (market)"
-                ));
+            let (close_action, reverse_action, close_hover, reverse_hover) = if sim {
+                (
+                    ToolbarAction::PaperClose,
+                    ToolbarAction::PaperReverse,
+                    format!("{close}: exit the open simulated position at the next print (market)"),
+                    paper.reverse_hover.clone(),
+                )
+            } else {
+                (
+                    ToolbarAction::VenueClose,
+                    ToolbarAction::VenueReverse,
+                    format!("{close}: close every open MT5 ticket on this symbol"),
+                    "close the open tickets and open the other way at market".to_owned(),
+                )
+            };
+            // Sim close is never locked (exit always); venue close rides the
+            // same Prod/Demo gate as Buy/Sell.
+            let close_enabled = sim || entry_enabled;
+            let button = outlined(
+                ui,
+                format!("× {close}"),
+                TRADE_CLOSE_WIDTH_PX,
+                close_enabled,
+            )
+            .on_hover_text(close_hover)
+            .on_disabled_hover_text(entry_lock);
             if button.clicked() {
-                actions.push(ToolbarAction::PaperClose);
+                actions.push(close_action);
             }
             let reverse = outlined(
                 ui,
                 TRADE_REVERSE_LABEL.to_owned(),
                 TRADE_REVERSE_WIDTH_PX,
-                enabled,
+                entry_enabled,
             )
-            .on_hover_text(&paper.reverse_hover)
-            .on_disabled_hover_text(locked);
+            .on_hover_text(reverse_hover)
+            .on_disabled_hover_text(entry_lock);
             if reverse.clicked() {
-                actions.push(ToolbarAction::PaperReverse);
+                actions.push(reverse_action);
             }
         }
     });
@@ -566,6 +628,41 @@ fn draw_route_notice(
     }
     ui.add(egui::Label::new(job).sense(egui::Sense::click()))
         .on_hover_text("where orders go - click to choose the account in the Trading panel")
+}
+
+fn draw_target_chips(
+    ui: &mut egui::Ui,
+    execution: &quantick_ui_model::chrome_toolbar::ExecutionStrip,
+    actions: &mut Vec<ToolbarAction>,
+) {
+    let palette = theme::get(ui.ctx());
+    for target in &execution.targets {
+        let target = *target;
+        let on = execution.target == target;
+        let (fill, ink) = if on {
+            (palette.draw_violet(), palette.chip_ink())
+        } else {
+            // Not `control()`: paint_trade tests treat that fill as Close/Reverse.
+            (egui::Color32::TRANSPARENT, palette.text_muted())
+        };
+        if ui
+            .add_sized(
+                egui::vec2(TARGET_CHIP_WIDTH_PX, 24.0),
+                egui::Button::new(egui::RichText::new(target.label()).color(ink).small())
+                    .fill(fill)
+                    .stroke(egui::Stroke::new(1.0_f32, palette.border()))
+                    .rounding(egui::Rounding::same(9.0)),
+            )
+            .on_hover_text(match target {
+                ExecutionTarget::Sim => "platform simulator — never hits MetaTrader",
+                ExecutionTarget::Prod => "connected MT5 real account — confirm before send",
+                ExecutionTarget::Demo => "connected MT5 demo account",
+            })
+            .clicked()
+        {
+            actions.push(ToolbarAction::SetExecutionTarget(target));
+        }
+    }
 }
 
 /// The `⋯` menu holding every folded group, in a fixed order so muscle
@@ -605,46 +702,85 @@ fn draw_overflow(
         }
         if !plan.trade_inline {
             ui.separator();
-            // The menu has no width to keep, so it says the whole label.
+            draw_target_chips(ui, &model.execution, actions);
             let paper = &model.paper;
-            let enabled = paper.blocked.is_none();
-            let locked = paper.blocked.as_deref().unwrap_or_default();
+            let sim = model.execution.target == ExecutionTarget::Sim;
+            let (enabled, locked, buy_action, sell_action, tag) = if sim {
+                (
+                    paper.blocked.is_none(),
+                    paper.blocked.as_deref().unwrap_or_default(),
+                    ToolbarAction::PaperBuy,
+                    ToolbarAction::PaperSell,
+                    "SIM",
+                )
+            } else {
+                (
+                    model.execution.venue_blocked.is_none(),
+                    model.execution.venue_blocked.as_deref().unwrap_or_default(),
+                    ToolbarAction::VenueBuy,
+                    ToolbarAction::VenueSell,
+                    model.execution.target.label(),
+                )
+            };
             let buy = ui
                 .add_enabled(
                     enabled,
-                    egui::Button::new(format!("{} at market (SIM)", paper.buy.label)),
+                    egui::Button::new(format!("{} at market ({tag})", paper.buy.label)),
                 )
                 .on_hover_text(&paper.buy.hover)
                 .on_disabled_hover_text(locked);
             if buy.clicked() {
-                actions.push(ToolbarAction::PaperBuy);
+                actions.push(buy_action);
                 ui.close_menu();
             }
             let sell = ui
                 .add_enabled(
                     enabled,
-                    egui::Button::new(format!("{} at market (SIM)", paper.sell.label)),
+                    egui::Button::new(format!("{} at market ({tag})", paper.sell.label)),
                 )
                 .on_hover_text(&paper.sell.hover)
                 .on_disabled_hover_text(locked);
             if sell.clicked() {
-                actions.push(ToolbarAction::PaperSell);
+                actions.push(sell_action);
                 ui.close_menu();
             }
-            if let Some(close) = &paper.close {
-                if ui.button(format!("× {close} (SIM)")).clicked() {
-                    actions.push(ToolbarAction::PaperClose);
+            let close_face = if sim {
+                paper.close.as_deref()
+            } else {
+                model.execution.venue_close.as_deref()
+            };
+            if let Some(close) = close_face {
+                let tag = if sim {
+                    "SIM"
+                } else {
+                    model.execution.target.label()
+                };
+                let (close_action, reverse_action) = if sim {
+                    (ToolbarAction::PaperClose, ToolbarAction::PaperReverse)
+                } else {
+                    (ToolbarAction::VenueClose, ToolbarAction::VenueReverse)
+                };
+                if ui
+                    .add_enabled(enabled, egui::Button::new(format!("× {close} ({tag})")))
+                    .on_disabled_hover_text(locked)
+                    .clicked()
+                {
+                    actions.push(close_action);
                     ui.close_menu();
                 }
                 let reverse = ui
                     .add_enabled(
                         enabled,
-                        egui::Button::new(format!("{TRADE_REVERSE_LABEL} (SIM)")),
+                        egui::Button::new(format!("{TRADE_REVERSE_LABEL} ({tag})")),
                     )
-                    .on_hover_text(&paper.reverse_hover)
+                    .on_hover_text(if sim {
+                        paper.reverse_hover.as_str()
+                    } else {
+                        "close then open the other way at market"
+                    })
                     .on_disabled_hover_text(locked);
                 if reverse.clicked() {
-                    actions.push(ToolbarAction::PaperReverse);
+                    actions.push(reverse_action);
                     ui.close_menu();
                 }
             }
