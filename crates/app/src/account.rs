@@ -12,7 +12,6 @@ use std::time::Duration;
 use eframe::egui;
 use quantick_engine::Side;
 use rust_decimal::Decimal;
-use rust_decimal::prelude::ToPrimitive;
 use tokio::sync::watch;
 
 use crate::chart::PriceScale;
@@ -20,6 +19,7 @@ use crate::config::MetaTraderSettings;
 use crate::paper_chrome::fmt_decimal;
 use crate::theme;
 
+mod chart;
 mod plate;
 mod poller;
 mod venue;
@@ -32,6 +32,7 @@ pub use venue::{
     parse_account_info, price_lots, trade_block, volume_lots,
 };
 
+pub(crate) use chart::handle_input as handle_venue_chart;
 pub(crate) use plate::{
     VenuePlateEnv, draw_conta_plate, draw_prod_confirm, request_venue_close, request_venue_entry,
     request_venue_reverse,
@@ -253,6 +254,8 @@ pub fn resolve_token(settings: &MetaTraderSettings) -> Option<String> {
 pub struct VenueSession {
     pub link: Option<AccountLink>,
     pub ticket: VenueTicket,
+    /// Chart drag creating or amending SL/TP on the MCP position.
+    pub chart_drag: chart::VenueChartDrag,
 }
 
 impl Default for VenueSession {
@@ -260,6 +263,7 @@ impl Default for VenueSession {
         Self {
             link: None,
             ticket: VenueTicket::load(),
+            chart_drag: chart::VenueChartDrag::None,
         }
     }
 }
@@ -380,8 +384,8 @@ pub fn spawn(settings: &MetaTraderSettings, symbol: String) -> Option<AccountLin
     })
 }
 
-/// Paint the badge under the legend and the dashed entry line at VWAP.
-pub fn draw(
+/// Full MCP overlay: lines plus the in-flight drag preview.
+pub fn draw_with_pointer(
     painter: &egui::Painter,
     chart_rect: egui::Rect,
     legend: Option<egui::Rect>,
@@ -389,15 +393,32 @@ pub fn draw(
     snapshot: &PositionSnapshot,
     scale: &PriceScale,
     axis_x: f32,
-) {
+    tag_right: f32,
+    pointer: Option<egui::Pos2>,
+    drag: chart::VenueChartDrag,
+    takes_input: bool,
+) -> bool {
     if snapshot.is_empty() {
-        return;
+        return false;
     }
-    draw_badge(painter, chart_rect, legend, legend_inset, snapshot);
-    draw_entry_line(painter, chart_rect, snapshot, scale, axis_x);
+    chart::paint(
+        &chart::VenueChartFrame {
+            painter,
+            chart_rect,
+            legend,
+            legend_inset,
+            scale,
+            axis_x,
+            tag_right,
+            pointer,
+            takes_input,
+        },
+        snapshot,
+        drag,
+    )
 }
 
-fn draw_badge(
+pub(crate) fn draw_badge(
     painter: &egui::Painter,
     chart_rect: egui::Rect,
     legend: Option<egui::Rect>,
@@ -442,37 +463,6 @@ fn draw_badge(
         y += galley.size().y + 1.0;
         clip.galley(pos, galley, ink);
     }
-}
-
-fn draw_entry_line(
-    painter: &egui::Painter,
-    chart_rect: egui::Rect,
-    snapshot: &PositionSnapshot,
-    scale: &PriceScale,
-    axis_x: f32,
-) {
-    let Some(price) = snapshot.entry_vwap().and_then(|value| value.to_f64()) else {
-        return;
-    };
-    let y = scale.y(price);
-    if y < chart_rect.top() || y > chart_rect.bottom() {
-        return;
-    }
-    let appearance = theme::get(painter.ctx());
-    let side = snapshot.net_side().unwrap_or(Side::Buy);
-    let color = match side {
-        Side::Buy => appearance.buy(),
-        Side::Sell => appearance.sell(),
-    };
-    painter.extend(egui::Shape::dashed_line(
-        &[egui::pos2(chart_rect.left(), y), egui::pos2(axis_x, y)],
-        egui::Stroke::new(1.0_f32, color.gamma_multiply(0.55)),
-        4.0,
-        4.0,
-    ));
-    let text = fmt_decimal(snapshot.entry_vwap().unwrap_or(Decimal::ZERO));
-    let ink = crate::paper_chrome::trade_action_ink(&appearance, color);
-    crate::pointer_compass::paint_price_tag(painter, axis_x, y, text, None, color, ink);
 }
 
 fn rgba([r, g, b, a]: [u8; 4]) -> egui::Color32 {
