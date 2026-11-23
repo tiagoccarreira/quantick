@@ -671,4 +671,13 @@ fn a_broker_route_snaps_the_hand_to_the_instrument_tick() {
         Decimal::from(172_141),
         "the simulator is unchanged"
     );
+    assert_eq!(
+        sim.snap_instrument(172_140.82),
+        Decimal::from(172_140),
+        "a Prod/Demo send still needs the instrument grid on a Sim paper route"
+    );
+    assert_eq!(
+        sim.snap_instrument_decimal(Decimal::from(167_604)),
+        Decimal::from(167_605)
+    );
 }

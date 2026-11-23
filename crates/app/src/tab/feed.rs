@@ -525,6 +525,7 @@ impl Tab {
                         .feed(&self.feed_id)
                         .and_then(|f| f.widget_tick(&self.symbol));
                     self.paper.account_mut().set_price_tick(tick);
+                    self.account.set_price_tick(tick);
                 }
                 TabDrainStage::ApplyIndicatorResults => {
                     for pane in self.panes_mut() {

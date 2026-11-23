@@ -489,6 +489,49 @@ impl PaperAccount {
         self.price_tick = tick.filter(|tick| *tick > Decimal::ZERO);
     }
 
+    /// The instrument tick the host last set, when known.
+    #[must_use]
+    pub fn price_tick(&self) -> Option<Decimal> {
+        self.price_tick
+    }
+
+    /// Snap to the instrument tick when known — including on Sim.
+    ///
+    /// [`Self::snap`] keeps the tape's precision on Sim so paper levels stay
+    /// free; MetaTrader still refuses an off-grid pending as "Invalid price"
+    /// (10015), so a Prod/Demo send uses this grid even while the tab's paper
+    /// route is Sim.
+    #[must_use]
+    pub fn snap_instrument(&self, price: f64) -> Decimal {
+        if let Some(tick) = self.price_tick
+            && let Some(steps) =
+                Decimal::from_f64_retain(price).and_then(|price| price.checked_div(tick))
+        {
+            return steps
+                .round()
+                .saturating_mul(tick)
+                .round_dp(tick.scale())
+                .normalize();
+        }
+        self.snap(price)
+    }
+
+    /// Same grid as [`Self::snap_instrument`], for a price already in decimal.
+    #[must_use]
+    pub fn snap_instrument_decimal(&self, price: Decimal) -> Decimal {
+        let Some(tick) = self.price_tick else {
+            return price;
+        };
+        match price.checked_div(tick) {
+            Some(steps) => steps
+                .round()
+                .saturating_mul(tick)
+                .round_dp(tick.scale())
+                .normalize(),
+            None => price,
+        }
+    }
+
     /// The size one stepper press moves, for the hover that promises it.
     pub fn quantity_step_hint(&self, notches: Decimal) -> String {
         let unit = self

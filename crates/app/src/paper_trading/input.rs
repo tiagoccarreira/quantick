@@ -10,7 +10,6 @@ use eframe::egui;
 use quantick_paper::desk::{ChartCommand, ChartFrame, CursorHint, HeldKeys, PriceAxis};
 use quantick_sim::EntryKind;
 use rust_decimal::Decimal;
-use rust_decimal::prelude::FromPrimitive;
 
 use super::paint_ctx::{bounds, point, pos};
 use super::{ChartInput, PaperTrading, VenueChartClick};
@@ -124,11 +123,11 @@ impl PaperTrading {
                     return;
                 }
             };
-            let Some(price) = Decimal::from_f64(raw_price).filter(|value| *value > Decimal::ZERO)
-            else {
+            let price = self.paper.account.snap_instrument(raw_price);
+            if price <= Decimal::ZERO {
                 self.show_toast("MT5: click price is not a number".into());
                 return;
-            };
+            }
             self.venue_click = Some(VenueChartClick {
                 side: armed.side,
                 kind,

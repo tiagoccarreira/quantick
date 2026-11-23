@@ -261,6 +261,23 @@ fn absolute_bracket_places_long_protection_below_and_above() {
 }
 
 #[test]
+fn venue_session_snaps_pending_to_instrument_tick() {
+    let mut session = super::VenueSession::default();
+    assert_eq!(
+        session.snap_price(Decimal::from(167_604)),
+        Decimal::from(167_604),
+        "no tick known: leave the click alone"
+    );
+    session.set_price_tick(Some(Decimal::from(5)));
+    assert_eq!(
+        session.snap_price(Decimal::from(167_604)),
+        Decimal::from(167_605),
+        "WIN tick 5: Invalid price (10015) without this"
+    );
+    assert_eq!(session.snap_price(Decimal::from(167_602)), Decimal::from(167_600));
+}
+
+#[test]
 fn parse_reads_pending_orders_and_brackets() {
     let payload = json!({
         "content": [{

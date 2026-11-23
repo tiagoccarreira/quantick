@@ -266,6 +266,8 @@ pub struct VenueSession {
     pub ticket: VenueTicket,
     /// Chart drag creating or amending SL/TP on the MCP position.
     pub chart_drag: chart::VenueChartDrag,
+    /// Instrument price tick from the feed widgets; MCP pending/SL/TP snap here.
+    price_tick: Option<Decimal>,
 }
 
 impl Default for VenueSession {
@@ -274,6 +276,30 @@ impl Default for VenueSession {
             link: None,
             ticket: VenueTicket::load(),
             chart_drag: chart::VenueChartDrag::None,
+            price_tick: None,
+        }
+    }
+}
+
+impl VenueSession {
+    /// Remember the feed's widget tick (`None` when unknown or not positive).
+    pub fn set_price_tick(&mut self, tick: Option<Decimal>) {
+        self.price_tick = tick.filter(|tick| *tick > Decimal::ZERO);
+    }
+
+    /// Land a price on the instrument tick; leave it alone when no tick is known.
+    #[must_use]
+    pub fn snap_price(&self, price: Decimal) -> Decimal {
+        let Some(tick) = self.price_tick else {
+            return price;
+        };
+        match price.checked_div(tick) {
+            Some(steps) => steps
+                .round()
+                .saturating_mul(tick)
+                .round_dp(tick.scale())
+                .normalize(),
+            None => price,
         }
     }
 }

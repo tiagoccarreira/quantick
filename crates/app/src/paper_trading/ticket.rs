@@ -80,14 +80,19 @@ impl PaperTrading {
             .ticket
             .quantity_preview()
             .map_or_else(|| "?".to_owned(), fmt_decimal);
-        let price = self.paper.account.snap(raw_price);
+        let via_venue = matches!(target, ExecutionTarget::Prod | ExecutionTarget::Demo);
+        // Prod/Demo must land on the instrument tick (WIN = 5); Sim keeps tape snap.
+        let price = if via_venue {
+            self.paper.account.snap_instrument(raw_price)
+        } else {
+            self.paper.account.snap(raw_price)
+        };
         let entries = [
             (Side::Buy, EntryKind::Limit, price < mark),
             (Side::Buy, EntryKind::Stop, price > mark),
             (Side::Sell, EntryKind::Limit, price > mark),
             (Side::Sell, EntryKind::Stop, price < mark),
         ];
-        let via_venue = matches!(target, ExecutionTarget::Prod | ExecutionTarget::Demo);
         for (side, kind, valid) in entries {
             let label = format!(
                 "{} {quantity} {} @ {}",

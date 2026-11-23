@@ -254,13 +254,21 @@ pub(crate) fn request_venue_entry(
         return;
     };
     let block = trade_block(source_ok, mode, info.as_ref());
-    let pending_price = click_price.or_else(|| session.ticket.parsed_pending_price());
+    let pending_price = click_price
+        .or_else(|| session.ticket.parsed_pending_price())
+        .map(|price| session.snap_price(price));
     let reference = match kind {
-        None => mark,
+        None => mark.map(|price| session.snap_price(price)),
         Some(_) => pending_price,
     };
     let (stop_loss, take_profit) = match reference {
-        Some(price) => absolute_bracket(side, price, stop_offset, profit_offset),
+        Some(price) => {
+            let (sl, tp) = absolute_bracket(side, price, stop_offset, profit_offset);
+            (
+                sl.map(|price| session.snap_price(price)),
+                tp.map(|price| session.snap_price(price)),
+            )
+        }
         None => (None, None),
     };
     let action = match kind {
@@ -313,8 +321,8 @@ pub(crate) fn request_venue_bracket(
         PendingAction::ModifySlTp {
             position_ticket,
             symbol,
-            stop_loss,
-            take_profit,
+            stop_loss: stop_loss.map(|price| session.snap_price(price)),
+            take_profit: take_profit.map(|price| session.snap_price(price)),
         },
         block,
     );
@@ -389,7 +397,14 @@ pub(crate) fn request_venue_reverse(
         Side::Sell => Side::Buy,
     };
     let (stop_loss, take_profit) = match mark {
-        Some(price) => absolute_bracket(flip, price, stop_offset, profit_offset),
+        Some(price) => {
+            let reference = session.snap_price(price);
+            let (sl, tp) = absolute_bracket(flip, reference, stop_offset, profit_offset);
+            (
+                sl.map(|price| session.snap_price(price)),
+                tp.map(|price| session.snap_price(price)),
+            )
+        }
         None => (None, None),
     };
     let block = venue_block(source_ok, session.ticket.target, info.as_ref());
