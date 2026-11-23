@@ -20,23 +20,46 @@
 use std::collections::BTreeMap;
 
 use quantick_engine::{Bar, BarProgress};
+use quantick_script_trigger::ScriptInstance;
 use quantick_sim::{Command, VenueEvent};
 use quantick_strategy::anchors::{AlarmMark, AnchoredInstance, StrategyAnchors};
 use quantick_strategy::presets::{CompiledPreset, StoredPreset};
 use quantick_strategy::runner::{self, StrategyPort};
 use quantick_strategy::sound::Cue;
 use quantick_strategy::{ArmedState, ArmedStrategy, DisarmReason, ForceTrigger, Region};
+use rust_decimal::Decimal;
+
+use crate::strategy_desk_book::{DeskBook, InstanceRef};
+
+/// A bar one print closed on one pane, at the composed slot it closed at:
+/// what the pane's strategies are queued.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveClose {
+    pub bar: Bar,
+    /// The point of control of the bar's footprint, when the pane kept one:
+    /// what a script strategy reads as `poc`.
+    pub poc: Option<Decimal>,
+    pub slot: usize,
+}
+
+/// Why a script riding a region stopped when its rectangle was deleted.
+pub const DRAWING_REMOVED: &str = "its region drawing was removed";
 
 /// The armed strategies of one pane and the work they park for the tab.
 /// See the module docs.
 pub struct PaneStrategies<D> {
     /// Armed strategy instances riding this pane's drawings.
     pub anchors: StrategyAnchors<D>,
+    /// Pine scripts armed alarm-only on this pane's bars, in arming order
+    /// (`crate::script_strategies`).
+    pub scripts: Vec<ScriptInstance<D>>,
     /// Closed bars awaiting evaluation, each with the slot it closed at.
     /// Queued only while instances exist and drained in the same ingestion
     /// sweep, so the slot and the drawings' anchors are read against one
     /// cut of the series.
-    pending: Vec<(Bar, usize)>,
+    /// Each with whether it is judged: `false` is a close nobody heard live
+    /// (a refilled hole), which a script only warms on.
+    pending: Vec<(LiveClose, bool)>,
     /// The drawing whose "Add strategy…" was clicked; drained into the
     /// arming dialog over this pane.
     popup_request: Option<D>,
@@ -49,6 +72,7 @@ impl<D> Default for PaneStrategies<D> {
     fn default() -> Self {
         Self {
             anchors: StrategyAnchors::default(),
+            scripts: Vec::new(),
             pending: Vec::new(),
             popup_request: None,
             cleanup: Vec::new(),
@@ -57,31 +81,67 @@ impl<D> Default for PaneStrategies<D> {
 }
 
 impl<D: Copy + PartialEq> PaneStrategies<D> {
-    /// Queue the bar that closed at `slot`, only while an instance exists:
-    /// an idle chart clones nothing on the per-trade path. The slot is the
-    /// composed one (venue history prefix + live bars), the space the
-    /// drawings' anchors live in.
-    pub fn queue_closed(&mut self, bar: &Bar, slot: usize) {
-        if !self.anchors.is_empty() {
-            self.pending.push((bar.clone(), slot));
+    /// Queue the bar that closed at `slot`, with its footprint POC, only
+    /// while an instance listens: an idle chart clones nothing on the
+    /// per-trade path. The slot is the composed one (venue history prefix +
+    /// live bars), the space the drawings' anchors live in.
+    ///
+    /// A close that is not `judged` — heard after the fact, as a refill —
+    /// trades and rings nothing: drawn instances never see it, and a script
+    /// warms on it in order, so its history stays the chart's copy's.
+    pub fn queue_closed(&mut self, bar: &Bar, poc: Option<Decimal>, slot: usize, judged: bool) {
+        let listens = if judged {
+            !self.is_empty()
+        } else {
+            self.scripts.iter().any(ScriptInstance::watching)
+        };
+        if listens {
+            let bar = bar.clone();
+            self.pending.push((LiveClose { bar, poc, slot }, judged));
         }
     }
 
-    /// The closed bars awaiting evaluation, slot each.
+    /// Whether nothing on this pane listens to its bars: no drawn instance,
+    /// and no script still watching.
     #[must_use]
-    pub fn pending(&self) -> &[(Bar, usize)] {
-        &self.pending
+    pub fn is_empty(&self) -> bool {
+        self.anchors.is_empty() && !self.scripts.iter().any(ScriptInstance::watching)
     }
 
-    /// Whether any instance carries an alarm.
+    /// The closed bars awaiting evaluation.
+    pub fn pending(&self) -> impl ExactSizeIterator<Item = &LiveClose> {
+        self.pending.iter().map(|(close, _)| close)
+    }
+
+    /// Whether any instance carries an alarm: a watching script always does.
     #[must_use]
     pub fn any_alarm(&self) -> bool {
+        self.anchor_alarm() || self.scripts.iter().any(ScriptInstance::watching)
+    }
+
+    /// Whether a drawn instance carries an alarm — the only kind that
+    /// previews the forming bar.
+    fn anchor_alarm(&self) -> bool {
         (self.anchors.instances.iter()).any(|instance| instance.alarm.is_some())
     }
 
-    /// The closed bars awaiting evaluation, drained.
+    /// Halt every script riding a drawing `exists` denies, naming why.
+    fn halt_orphan_scripts(&mut self, exists: impl Fn(D) -> bool) {
+        for script in &mut self.scripts {
+            if script
+                .placement
+                .drawing()
+                .is_some_and(|drawing| !exists(drawing))
+            {
+                script.halt(DRAWING_REMOVED);
+            }
+        }
+    }
+
+    /// The closed bars awaiting evaluation, drained, each with whether it
+    /// is judged.
     #[must_use]
-    pub fn take_bars(&mut self) -> Vec<(Bar, usize)> {
+    pub fn take_bars(&mut self) -> Vec<(LiveClose, bool)> {
         std::mem::take(&mut self.pending)
     }
 
@@ -101,29 +161,30 @@ impl<D: Copy + PartialEq> PaneStrategies<D> {
         self.popup_request.take()
     }
 
-    /// Re-arm the instance riding `drawing`, re-warming its ruler on
-    /// `warmup(depth)` when the disarm named a *rebuilt series* (a replay
+    /// Re-arm every ended instance riding `drawing`, re-warming a ruler on
+    /// `warmup(depth)` when its disarm named a *rebuilt series* (a replay
     /// seek, a bar-spec change, a market switch). Without the re-warm,
-    /// "re-armed" silently means "warming up for another twenty bars".
-    pub fn rearm(&mut self, drawing: D, warmup: impl FnOnce(usize) -> Vec<Bar>) {
-        let Some(instance) = self.anchors.for_drawing_mut(drawing) else {
-            return;
-        };
-        let series_changed = matches!(
-            instance.armed.state(),
-            ArmedState::Disarmed { reason } if reason.resets_series()
-        );
-        instance.armed.rearm();
-        if series_changed {
-            let bars = warmup(instance.armed.trigger().warmup_bars());
-            instance.armed.warm(&bars);
+    /// "re-armed" silently means "warming up for another twenty bars". An
+    /// instance still watching is left as it is.
+    pub fn rearm(&mut self, drawing: D, mut warmup: impl FnMut(usize) -> Vec<Bar>) {
+        let reached = self.anchors.on_drawing_mut(drawing);
+        for instance in reached.filter(|instance| instance.rearmable()) {
+            rearm_instance(instance, &mut warmup);
         }
+    }
+
+    /// Remove the drawn instance at `index`, queueing the sweep of its
+    /// resting entry; its drawing's other instances stay.
+    pub(crate) fn remove_instance_at(&mut self, index: usize) {
+        let instance = self.anchors.instances.remove(index);
+        self.cleanup.extend(instance.armed.pending_entry_cancel());
     }
 
     /// Sweep instances whose drawing no longer `exists`, queueing what they
     /// owe for the same-frame drain — for the deletion paths that have no
     /// id in hand (delete-all, undo, redo).
     pub fn sweep_orphans(&mut self, exists: impl Fn(D) -> bool) {
+        self.halt_orphan_scripts(&exists);
         if self.anchors.is_empty() {
             return;
         }
@@ -137,18 +198,21 @@ impl<D: Copy + PartialEq> PaneStrategies<D> {
         std::mem::take(&mut self.cleanup)
     }
 
-    /// Remove the instance riding `drawing` and queue the sweep of its
-    /// pending entry — every "the bot dies with its drawing" path funnels
+    /// Remove every instance riding `drawing` and queue the sweep of their
+    /// pending entries — every "the bot dies with its drawing" path funnels
     /// through here.
     pub fn remove_for_drawing(&mut self, drawing: D) {
+        self.halt_orphan_scripts(|riding| riding != drawing);
         let cleanup = self.anchors.remove_for_drawing(drawing);
         self.cleanup.extend(cleanup);
     }
 
-    /// Call off the strategy riding `drawing`, as the user, and queue the
-    /// sweep of whatever it left resting. Nothing to call off is a no-op.
+    /// Call off every strategy riding `drawing` still watching, as the
+    /// user, and queue the sweep of whatever they left resting. An ended
+    /// one keeps its reason. Nothing to call off is a no-op.
     pub fn disarm(&mut self, drawing: D) {
-        if let Some(instance) = self.anchors.for_drawing_mut(drawing) {
+        let reached = self.anchors.on_drawing_mut(drawing);
+        for instance in reached.filter(|instance| instance.watching()) {
             let cleanup = instance.armed.disarm(DisarmReason::User);
             self.cleanup.extend(cleanup);
         }
@@ -158,13 +222,16 @@ impl<D: Copy + PartialEq> PaneStrategies<D> {
     /// the series that ended; answers with the cleanup the instances owe.
     pub fn disarm_all(&mut self, reason: DisarmReason) -> Vec<Command> {
         self.pending.clear();
+        for script in &mut self.scripts {
+            script.disarm(reason);
+        }
         self.anchors.disarm_all(reason)
     }
 
     /// Arm `form` on `drawing`, warmed on `warmup(depth)`, once `check` —
-    /// the chart's judgement of the drawing — passed. Answers with the
-    /// cleanup an instance it replaced owes the simulator, and the cue its
-    /// alarm rings with, if it carries one.
+    /// the chart's judgement of the drawing — passed, beside any instance
+    /// already riding it. Answers with the cue its alarm rings with, if it
+    /// carries one.
     ///
     /// # Errors
     ///
@@ -177,7 +244,7 @@ impl<D: Copy + PartialEq> PaneStrategies<D> {
         preset: String,
         check: impl FnOnce() -> Result<(), String>,
         warmup: impl FnOnce(usize) -> Vec<Bar>,
-    ) -> Result<(Vec<Command>, Option<Cue>), String> {
+    ) -> Result<Option<Cue>, String> {
         let Some(CompiledPreset {
             params,
             force,
@@ -195,7 +262,7 @@ impl<D: Copy + PartialEq> PaneStrategies<D> {
         // Armed means armed now, not after another twenty bars of warmup
         // the trader cannot see the reason for.
         armed.warm(&warmup(armed.trigger().warmup_bars()));
-        let replaced = self.anchors.arm(AnchoredInstance {
+        self.anchors.arm(AnchoredInstance {
             drawing,
             preset,
             spec: form.clone(),
@@ -204,7 +271,26 @@ impl<D: Copy + PartialEq> PaneStrategies<D> {
             cue: alarm.map(|setup| setup.cue).unwrap_or_default(),
             mark: AlarmMark::Quiet,
         });
-        Ok((replaced, alarm.map(|setup| setup.cue)))
+        Ok(alarm.map(|setup| setup.cue))
+    }
+}
+
+/// Re-arm one ended instance (see [`PaneStrategies::rearm`]).
+pub(crate) fn rearm_instance<D>(
+    instance: &mut AnchoredInstance<D>,
+    mut warmup: impl FnMut(usize) -> Vec<Bar>,
+) {
+    let series_changed = matches!(
+        instance.armed.state(),
+        ArmedState::Disarmed { reason } if reason.resets_series()
+    );
+    instance.armed.rearm();
+    // Re-armed means armed: a pause does not outlive the re-arm, from the
+    // drawing's menu or the desk alike.
+    instance.armed.resume();
+    if series_changed {
+        let bars = warmup(instance.armed.trigger().warmup_bars());
+        instance.armed.warm(&bars);
     }
 }
 
@@ -237,17 +323,33 @@ pub struct Evaluation {
 /// Every pane's strategies, keyed by the pane's id.
 pub struct TabStrategies<D> {
     panes: BTreeMap<u64, PaneStrategies<D>>,
+    /// The id the next armed script takes; never reused in the tab's life.
+    pub(crate) next_script_id: u64,
+    /// What the strategy desk keeps beside the instances.
+    pub(crate) desk: DeskBook<D>,
 }
 
 impl<D> Default for TabStrategies<D> {
     fn default() -> Self {
         Self {
             panes: BTreeMap::new(),
+            next_script_id: 1,
+            desk: DeskBook::default(),
         }
     }
 }
 
 impl<D: Copy + PartialEq> TabStrategies<D> {
+    /// Every pane that has held a strategy, in id order.
+    pub(crate) fn panes(&self) -> impl Iterator<Item = (u64, &PaneStrategies<D>)> {
+        self.panes.iter().map(|(&id, pane)| (id, pane))
+    }
+
+    /// Every pane that has held a strategy, in id order, to act on.
+    pub(crate) fn panes_mut(&mut self) -> impl Iterator<Item = (u64, &mut PaneStrategies<D>)> {
+        self.panes.iter_mut().map(|(&id, pane)| (id, pane))
+    }
+
     /// The strategies of pane `id`, when it has ever held one.
     #[must_use]
     pub fn pane(&self, id: u64) -> Option<&PaneStrategies<D>> {
@@ -268,7 +370,7 @@ impl<D: Copy + PartialEq> TabStrategies<D> {
     /// Whether any pane carries an instance.
     #[must_use]
     pub fn any_armed(&self) -> bool {
-        self.panes.values().any(|pane| !pane.anchors.is_empty())
+        self.panes.values().any(|pane| !pane.is_empty())
     }
 
     /// The instances riding pane `id`'s drawings, if any.
@@ -290,9 +392,16 @@ impl<D: Copy + PartialEq> TabStrategies<D> {
 
     /// Queue the bar pane `id` closed at `slot` (see
     /// [`PaneStrategies::queue_closed`]). Opens no entry: the per-trade path.
-    pub fn queue_closed(&mut self, id: u64, bar: &Bar, slot: usize) {
+    pub fn queue_closed(
+        &mut self,
+        id: u64,
+        bar: &Bar,
+        poc: Option<Decimal>,
+        slot: usize,
+        judged: bool,
+    ) {
         if let Some(pane) = self.panes.get_mut(&id) {
-            pane.queue_closed(bar, slot);
+            pane.queue_closed(bar, poc, slot, judged);
         }
     }
 
@@ -347,12 +456,13 @@ impl<D: Copy + PartialEq> TabStrategies<D> {
         mut forming: impl FnMut(u64) -> Option<Forming>,
     ) -> Evaluation {
         let Print { events, now_ms } = print;
+        self.desk.heard(now_ms);
         let mut answer = Evaluation::default();
         for &id in panes {
             let Some(pane) = self.panes.get_mut(&id) else {
                 continue;
             };
-            if pane.anchors.is_empty() {
+            if pane.is_empty() {
                 continue;
             }
             // The batch to each instance, applying what it answers with —
@@ -366,20 +476,44 @@ impl<D: Copy + PartialEq> TabStrategies<D> {
                 for command in pane.anchors.drop_orphans(|drawing| exists(id, drawing)) {
                     let _ = port.apply(command);
                 }
+                // A script riding a region stops with its drawing, and says so.
+                pane.halt_orphan_scripts(|drawing| exists(id, drawing));
             }
-            for (bar, slot) in &bars {
+            for (close, judged) in &bars {
+                if !judged {
+                    for script in &mut pane.scripts {
+                        script.warm(&close.bar, close.poc);
+                    }
+                    continue;
+                }
                 answer.alarms.extend(runner::step_closed_bar(
                     &mut pane.anchors.instances,
-                    bar,
-                    *slot,
+                    &close.bar,
+                    close.slot,
                     |drawing, slot| region(id, drawing, slot),
                     port,
                     now_ms,
                 ));
+                self.desk.count_drawn(id, &pane.anchors.instances, now_ms);
+                for script in &mut pane.scripts {
+                    // Paused from the desk: its script keeps its history.
+                    if self.desk.script_paused(script.id) {
+                        script.warm(&close.bar, close.poc);
+                        continue;
+                    }
+                    let resolved =
+                        (script.placement).resolve(|drawing| region(id, drawing, close.slot));
+                    let rang =
+                        script.on_closed_bar(&close.bar, close.poc, resolved.as_ref(), now_ms);
+                    if rang.is_some() {
+                        self.desk.fired(InstanceRef::Script(script.id), now_ms);
+                    }
+                    answer.alarms.extend(rang);
+                }
             }
             // The bar still forming, judged for the alarm only. Per print,
             // so it opens with the question that costs least.
-            let any_alarm = pane.any_alarm();
+            let any_alarm = pane.anchor_alarm();
             if let Some(Forming {
                 bar,
                 progress,

@@ -20,7 +20,7 @@ use super::{
     REPORT_FOOTER_RESERVE_PX, REPORT_GRID_MIN_H_PX, REPORT_MIN_HEIGHT_CALENDAR_PX,
     REPORT_MIN_HEIGHT_PX, REPORT_MIN_WIDTH_PX, ReportEnv, SourceFilter,
 };
-use crate::paper_calendar::{CivilDate, DaySelection, today};
+use crate::paper_calendar::{DaySelection, today};
 use crate::paper_chrome::pill_toggle;
 use crate::theme;
 use crate::timezone::TzOffset;
@@ -34,9 +34,7 @@ impl Paint<'_, '_> {
         if !self.report_open() {
             return;
         }
-        self.ensure_report_view(tz, env.pnl);
         let mut open = true;
-        let mut reload = false;
         let mut toggle_list = false;
         let style = ctx.style();
         let title = egui::TextStyle::Heading.resolve(&style);
@@ -50,7 +48,7 @@ impl Paint<'_, '_> {
             - frame.inner_margin.sum().y)
             .max(0.0);
         let id = egui::Id::new("Simulated performance");
-        crate::popup::centred(egui::Window::new("Simulated performance"), id, ctx)
+        crate::popup::centred(egui::Window::new("Trading performance"), id, ctx)
             .open(&mut open)
             .collapsible(false)
             .resizable(true)
@@ -76,7 +74,27 @@ impl Paint<'_, '_> {
             .show(ctx, |ui| {
                 #[cfg(any(feature = "scenario-harness", test))]
                 self.native.scroll_probe.report(ui);
-                reload = self.draw_report_filters(ui);
+                if self.draw_report_filters(ui) {
+                    self.update(Intent::ReloadReport);
+                }
+                self.ensure_report_view(tz, env.pnl);
+                if let Some(view) = self.report_view() {
+                    ui.label(
+                        egui::RichText::new(view.scope_line())
+                            .color(theme::get(ui.ctx()).text_support()),
+                    );
+                }
+                if let Some(scope) = self.report_scope() {
+                    let reset = ui
+                        .horizontal(|ui| {
+                            ui.label(&scope.title);
+                            ui.button("Back to ordinary report").clicked()
+                        })
+                        .inner;
+                    if reset {
+                        self.update(Intent::ClearFilters(env.symbol.to_owned()));
+                    }
+                }
                 self.draw_report_calendar(ui, tz);
                 // The rows above can retire the view — a picked day, a
                 // pill, a cleared range. Re-cutting it here rather than
@@ -128,15 +146,12 @@ impl Paint<'_, '_> {
                         #[cfg(any(feature = "scenario-harness", test))]
                         self.native.scroll_probe.rows(ui);
                     }
-                    _ => reload |= self.draw_report_empty(ui, env),
+                    _ => self.draw_report_empty(ui, env),
                 }
                 self.draw_report_footer(ui, env);
             });
         if toggle_list {
             self.update(Intent::ListOpen(!self.report_list_open()));
-        }
-        if reload {
-            self.update(Intent::ReloadReport);
         }
         if !open {
             self.update(Intent::Close);
@@ -144,84 +159,34 @@ impl Paint<'_, '_> {
         self.update(Intent::DrainToast);
     }
 
-    /// Why nothing is listed and the way back; true when history must reload.
-    fn draw_report_empty(&mut self, ui: &mut egui::Ui, env: &ReportEnv<'_>) -> bool {
+    /// Why nothing is listed and the way back.
+    fn draw_report_empty(&mut self, ui: &mut egui::Ui, env: &ReportEnv<'_>) {
         let palette = theme::get(ui.ctx());
         ui.add_space(8.0);
         ui.label(
             egui::RichText::new("No saved trades for this filter.").color(palette.text_primary()),
         );
-        let scope = self
-            .report_symbol()
-            .as_deref()
-            .unwrap_or("any symbol")
-            .to_owned();
-        let hidden_by_source = self
-            .report_view()
-            .as_ref()
-            .map_or(0, |view| view.hidden_by_source);
-        let picked = self.calendar().selection.range();
-        let text = if let Some(range) = picked {
-            // The dates are the user's own pick, so the
-            // refusal names them and the way back out.
-            format!(
-                "{scope} closed no trades in {} - pick another day, or clear \
-                 the date filter to go back to the period pills.",
-                range.label(),
-            )
-        } else if hidden_by_source > 0 {
-            // The trades exist; the one control that would
-            // reveal them must be named, not implied.
-            format!(
-                "{scope} has {hidden_by_source} trade(s) behind the Source \
-                 filter. Try Source \"Both\".",
-            )
-        } else {
-            format!(
-                "{scope} has no trades in {}. Try \"All\", or another symbol.",
-                self.report_period().phrase(),
-            )
-        };
-        ui.label(egui::RichText::new(text).color(palette.text_support()));
-        let default_symbol = (!env.symbol.is_empty()).then(|| env.symbol.to_owned());
-        if (self.report_period() != ReportPeriod::All
-            || self.report_symbol() != &default_symbol
-            || picked.is_some())
+        ui.label(egui::RichText::new(self.empty_hint()).color(palette.text_support()));
+        if self.filters_narrowed(env.symbol)
             && ui
                 .button("Clear filters")
                 .on_hover_text("back to this symbol, all time, no dates")
                 .clicked()
         {
             self.update(Intent::ClearFilters(env.symbol.to_owned()));
-            return true;
         }
-        false
     }
 
-    /// The unreadable-file count, the scope line and the P&L footnote.
+    /// The unreadable-file count, the history scan totals and the P&L footnote.
     fn draw_report_footer(&mut self, ui: &mut egui::Ui, env: &ReportEnv<'_>) {
         let palette = theme::get(ui.ctx());
         ui.add_space(6.0);
         if let Some(history) = self.report() {
-            if history.unreadable_files > 0 || history.problem_rows > 0 {
-                ui.label(
-                    egui::RichText::new(format!(
-                        "{} file(s) unreadable, {} row(s) skipped - counted, never \
-                         silently dropped.",
-                        history.unreadable_files, history.problem_rows,
-                    ))
-                    .color(palette.warn())
-                    .small(),
-                );
-            }
+            super::draw_history_warning(ui, history);
             ui.label(
-                egui::RichText::new(format!(
-                    "{} trade(s) across {} file(s) in scope",
-                    history.rows.len(),
-                    history.files
-                ))
-                .color(palette.text_muted())
-                .small(),
+                egui::RichText::new(history.scan_summary())
+                    .color(palette.text_muted())
+                    .small(),
             );
         }
         let _footer =
@@ -274,9 +239,9 @@ impl Paint<'_, '_> {
                     .small(),
             );
             for source in SourceFilter::PILLS {
-                let on = self.report_source() == source;
-                if pill_toggle(ui, source.label(), on, source.hover()).clicked() && !on {
-                    self.update(Intent::Source(source));
+                let on = self.report_source().contains(source);
+                if pill_toggle(ui, source.label(), on, source.hover()).clicked() {
+                    self.update(Intent::Source(self.report_source().toggled(source)));
                 }
             }
             ui.separator();
@@ -338,62 +303,6 @@ impl Paint<'_, '_> {
                 }
             });
         });
-        if let Some(view) = self.report_view() {
-            let text = match (view.range, view.anchor_ms) {
-                // A picked range names itself in absolute dates: the whole
-                // point of the calendar is a window the trader can state.
-                (Some(range), _) => {
-                    let mut text = format!(
-                        "{} ({} day(s), the dates you picked - the period pills are standing \
-                         down)",
-                        range.label(),
-                        range.days(),
-                    );
-                    if view.hidden_outside > 0 {
-                        text.push_str(&format!(
-                            " - {} saved trade(s) outside these dates",
-                            view.hidden_outside,
-                        ));
-                    }
-                    if view.hidden_by_source > 0 {
-                        text.push_str(&format!(
-                            " - {} trade(s) behind the Source filter",
-                            view.hidden_by_source,
-                        ));
-                    }
-                    text
-                }
-                (None, Some(anchor)) => {
-                    let mut text = format!(
-                        "{} up to {} (newest saved trade, not the wall clock)",
-                        view.period.phrase(),
-                        CivilDate::from_ms(anchor, view.tz).iso(),
-                    );
-                    if view.hidden_outside > 0 {
-                        // "Where did my old trades go" gets a literal
-                        // answer: they are saved, before this window.
-                        text.push_str(&format!(
-                            " - {} older saved trade(s) before this window",
-                            view.hidden_outside,
-                        ));
-                    }
-                    if view.hidden_by_source > 0 {
-                        text.push_str(&format!(
-                            " - {} trade(s) behind the Source filter",
-                            view.hidden_by_source,
-                        ));
-                    }
-                    text
-                }
-                (None, None) if view.hidden_by_source > 0 => format!(
-                    "no saved trades in this scope - {} trade(s) sit behind the Source \
-                     filter (try Both)",
-                    view.hidden_by_source,
-                ),
-                (None, None) => "no saved trades in this scope".to_owned(),
-            };
-            ui.label(egui::RichText::new(text).color(palette.text_support()));
-        }
         reload
     }
 
@@ -440,30 +349,11 @@ impl Paint<'_, '_> {
                 {
                     self.update(Intent::Dates(DaySelection::None));
                 }
-            } else if self.report_days().is_empty() {
+            } else {
                 ui.label(
-                    egui::RichText::new("no days on record in this scope")
+                    egui::RichText::new(self.report_days().span_label())
                         .color(palette.text_muted())
                         .small(),
-                );
-            } else if let (Some(oldest), Some(newest)) =
-                (self.report_days().first(), self.report_days().last())
-            {
-                // The span on record, stated: it is the answer to "how far
-                // back can I even ask" before the first click is made.
-                ui.label(
-                    egui::RichText::new(format!(
-                        // "to", not an arrow: this label is drawn in the
-                        // proportional UI font, which has no glyph for → and
-                        // renders a tofu box in its place (the same reason
-                        // DateRange::label spells its span with a word).
-                        "{} day(s) with trades · {} to {}",
-                        self.report_days().len(),
-                        oldest.iso(),
-                        newest.iso(),
-                    ))
-                    .color(palette.text_muted())
-                    .small(),
                 );
             }
         });

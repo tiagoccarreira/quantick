@@ -71,6 +71,7 @@ pub mod schema_documents;
 pub mod script;
 pub mod semantic;
 pub mod session;
+pub mod session_reports;
 pub mod settings;
 mod tabs;
 pub mod tape_fold;
@@ -106,3 +107,5 @@ pub mod script_editor;
 
 pub mod native_indicator;
 pub mod script_alarms;
+pub mod script_strategy;
+pub mod strategy_desk;

@@ -863,12 +863,7 @@ fn replay_plan() -> Vec<(&'static str, u32, Value, Readback)> {
             Value::Null,
             Readback::Moves,
         ),
-        (
-            "workspace.new",
-            1,
-            json!({ "name": "Blank" }),
-            Readback::Moves,
-        ),
+        ("workspace.new", 1, json!({ "name": "  " }), Readback::Moves),
         // Last: deleting a workspace lays its tab out as a new tab, and the rows
         // above work on the charts the earlier rows opened.
         (
@@ -958,6 +953,7 @@ fn replay_plan() -> Vec<(&'static str, u32, Value, Readback)> {
         ("canvas.pane.pop_out", 1, Value::Null, Readback::Moves),
         ("canvas.pane.return", 1, Value::Null, Readback::Moves),
         ("canvas.pane.remove", 1, Value::Null, Readback::Moves),
+        ("session.report.open", 1, Value::Null, Readback::Moves),
         ("alerts.open", 1, json!({}), Readback::Moves),
         // Last of all: it closes the active tab, edits or not.
         ("tab.close", 1, json!({ "save": false }), Readback::Moves),
@@ -1008,6 +1004,15 @@ fn every_reachable_optional_row_replays_a_dropped_answer_and_begins_once() {
         reachable,
         "the plan covers every reachable optional row, and nothing else"
     );
+    let mut client = connect(&directory, &cockpit);
+    for payload in [json!({}), json!({"name": " "})] {
+        let (answer, dispatched) = unkeyed_call(&mut app, &mut client, "workspace.new", payload);
+        assert!(
+            matches!(answer.outcome, ResponseOutcome::Failure { ref error } if error.message.contains("idempotency key"))
+        );
+        assert!(dispatched.is_empty());
+    }
+    drop(client);
     let mut first_layout = Value::Null;
     // A dialog already up, so the desk's dialog rows answer without raising a
     // real one on whoever runs the tests.
@@ -1019,6 +1024,20 @@ fn every_reachable_optional_row_replays_a_dropped_answer_and_begins_once() {
         let mut client = connect(&directory, &cockpit);
         let row = retry_matrix::readback(capability).expect("the matrix has a row");
         let payload = match capability {
+            "session.report.open" => {
+                let dir = directory.join("report-history");
+                std::fs::create_dir_all(dir.join("RETRY")).unwrap();
+                std::fs::write(
+                    dir.join("RETRY/report.csv"),
+                    quantick_sim::history::write_header(
+                        "RETRY",
+                        quantick_sim::history::SessionSource::Live,
+                    ),
+                )
+                .unwrap();
+                app.active_tab_mut().paper.redirect_history_dir(dir);
+                json!({ "action": "session", "session": "RETRY/report.csv" })
+            }
             "market.open" => json!({
                 "feed": app.active_tab().feed_id,
                 "symbol": app.active_tab().symbol,
@@ -1667,6 +1686,7 @@ fn every_reachable_forbidden_row_refuses_a_key_before_the_application() {
     let mut client = connect(&directory, &options("annotator", ANNOTATE_SCOPES));
     let anchors = two_anchors(&app);
     let fib_anchors = chart_anchors(&anchors);
+    let tab = app.runtime.tabs.active_id().to_string();
     let script = "//@version=5\nindicator(\"agent ema\")\nplot(close)\n";
     let rows: Vec<_> = retry_matrix::READBACKS
         .iter()
@@ -1694,6 +1714,23 @@ fn every_reachable_forbidden_row_refuses_a_key_before_the_application() {
             "indicator.script.attach" => json!({ "name": "keyed", "source": script }),
             "indicator.script.detach" => json!({ "slot_id": "1" }),
             "notify.popup" | "notify.toast" | "notify.sound" => json!({ "message": "keyed" }),
+            "strategy.script.arm" => {
+                json!({ "script": "keyed.pine", "side": "buy", "placement": { "kind": "anywhere" } })
+            }
+            "strategy.script.disarm" => json!({ "id": "1" }),
+            "strategy.desk.pause"
+            | "strategy.desk.resume"
+            | "strategy.desk.remove"
+            | "strategy.desk.arm"
+            | "strategy.desk.duplicate" => {
+                json!({ "tab_id": tab, "instance": { "kind": "script", "id": "1" } })
+            }
+            "strategy.desk.asset.pause" | "strategy.desk.asset.resume" => {
+                json!({ "symbol": "keyed", "bar_type": "tick(1)" })
+            }
+            "strategy.desk.save_as" => {
+                json!({ "tab_id": tab, "instance": { "kind": "script", "id": "1" }, "name": "keyed.pine" })
+            }
             other => panic!("`{other}` is a reachable forbidden row with no input here; add one"),
         };
         let (response, served) = keyed_call(

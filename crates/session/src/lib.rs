@@ -33,8 +33,12 @@ mod native;
 mod paging;
 pub mod paper;
 pub mod prompt;
+pub mod script_draft;
+pub mod script_strategies;
 pub mod series;
 pub mod strategies;
+pub mod strategy_desk;
+mod strategy_desk_book;
 pub mod strategy_reading;
 pub mod switch_prompt;
 pub mod tab_chip;
@@ -968,6 +972,8 @@ mod paper_gate_tests;
 mod paper_settings_tests;
 #[cfg(test)]
 mod paper_tests;
+#[cfg(test)]
+mod script_strategies_tests;
 #[cfg(test)]
 mod series_tests;
 #[cfg(test)]

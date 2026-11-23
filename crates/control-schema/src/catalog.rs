@@ -8,6 +8,9 @@ pub fn documents() -> Vec<(&'static str, serde_json::Value)> {
     let mut documents = Vec::new();
     documents.extend(crate::alerts::documents());
     documents.extend(crate::script_alarms::documents());
+    documents.extend(crate::script_strategy::documents());
+    documents.extend(crate::strategy_describe::documents());
+    documents.extend(crate::strategy_desk::documents());
     documents.extend(crate::workspace_book::documents());
     documents.extend(crate::workspace_colour::documents());
     documents.extend(crate::workspace_manage::documents());
@@ -21,6 +24,7 @@ pub fn documents() -> Vec<(&'static str, serde_json::Value)> {
     documents.extend(crate::price_tag_progress::documents());
     documents.extend(crate::chart_settings::documents());
     documents.extend(crate::journal_sessions::documents());
+    documents.extend(crate::session_reports::documents());
     documents.extend(crate::time_axis::documents());
     documents.extend(crate::opening_scale::documents());
     documents.extend(crate::bubble_scale::documents());

@@ -14,6 +14,7 @@
 use std::path::{Path, PathBuf};
 
 mod catalog;
+mod create_source;
 mod persistence;
 pub use catalog::{EMBEDDED_SCRIPTS, POPULAR_INDICATORS, ScriptMetadata, script_title};
 pub const MAX_SOURCE_BYTES: usize = 256 * 1024;
@@ -95,6 +96,15 @@ impl ScriptLibrary {
             };
         }
         Self::scan_dir(dir)
+    }
+
+    /// The embedded scripts alone, over `dir`: for a caller that found the
+    /// folder unreadable and reports that itself.
+    pub fn bundled(dir: &Path) -> Self {
+        Self {
+            entries: Self::embedded(),
+            directory: dir.to_owned(),
+        }
     }
 
     /// The embedded scripts, which every library starts from.
@@ -206,6 +216,17 @@ impl ScriptLibrary {
     /// The index of the entry named `name`, the key every by-name caller uses.
     pub fn index_of(&self, name: &str) -> Option<usize> {
         self.entries.iter().position(|entry| entry.name == name)
+    }
+
+    /// Keep `source` as the new library file `name`: the strategy desk's
+    /// "save as" of a running script.
+    ///
+    /// # Errors
+    ///
+    /// A name that is not `letters-digits_.pine`, one already taken, or a
+    /// write that failed.
+    pub fn save_as(&mut self, name: &str, source: &str) -> Result<ScriptDocument, String> {
+        self.create_document(name, source)
     }
 
     /// What a saved entry naming `name` loads.

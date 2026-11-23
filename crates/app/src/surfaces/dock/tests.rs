@@ -28,12 +28,14 @@ mod cases {
                         &mut dock,
                         ctx,
                         &mut PaperPanelEnv {
+                            live_journals: &[],
                             alerts_open: false,
                             replay: None,
                             paper: &mut paper,
                             timezone: TzOffset::default(),
                             route: None,
                             venue: None,
+                            strategies: None,
                         },
                     );
                     assert!(!response.close_replay);
@@ -47,12 +49,14 @@ mod cases {
                 &mut dock,
                 ctx,
                 &mut PaperPanelEnv {
+                    live_journals: &[],
                     alerts_open: false,
                     replay: None,
                     paper: &mut paper,
                     timezone: TzOffset::default(),
                     route: None,
                     venue: None,
+                    strategies: None,
                 },
             );
             assert!(!response.close_replay);
@@ -76,12 +80,14 @@ mod cases {
                         dock,
                         ctx,
                         &mut PaperPanelEnv {
+                            live_journals: &[],
                             alerts_open: false,
                             replay: None,
                             paper,
                             timezone: TzOffset::default(),
                             route: None,
                             venue: None,
+                            strategies: None,
                         },
                     );
                 });
@@ -119,12 +125,14 @@ mod cases {
         env: &mut PaperPanelEnv<'_>,
     ) -> PaperPanelEffects {
         let mut env = BorrowedSurfaceEnv::Paper(PaperPanelEnv {
+            live_journals: env.live_journals,
             alerts_open: false,
             paper: env.paper,
             replay: env.replay,
             timezone: env.timezone,
             route: None,
             venue: None,
+            strategies: None,
         });
         registry
             .draw_slot_unscoped_with_env(
@@ -146,12 +154,14 @@ mod cases {
         let mut response = SurfaceResponse::default();
         let output = ctx.run(panel_input(viewport, events), |ctx| {
             let mut env = BorrowedSurfaceEnv::Paper(PaperPanelEnv {
+                live_journals: &[],
                 alerts_open: false,
                 paper,
                 replay: None,
                 timezone: Default::default(),
                 route: None,
                 venue: None,
+                strategies: None,
             });
             response = registry.draw_slot_unscoped_with_env(
                 Slot::LateEdgePanels,
@@ -348,12 +358,14 @@ mod cases {
                 input.screen_rect = Some(screen);
                 let output = ctx.run(input, |ctx| {
                     let mut env = BorrowedSurfaceEnv::Paper(PaperPanelEnv {
+                        live_journals: &[],
                         alerts_open: false,
                         paper: &mut paper,
                         replay: None,
                         timezone: Default::default(),
                         route: None,
                         venue: None,
+                        strategies: None,
                     });
                     effects = registry
                         .draw_slot_unscoped_with_env(
@@ -506,12 +518,14 @@ fn paper_report_composition_preserves_account_lifetime_and_tail_registration() {
     for paper in [&mut first, &mut second] {
         let _ = ctx.run(egui::RawInput::default(), |ctx| {
             let mut env = BorrowedSurfaceEnv::Paper(PaperPanelEnv {
+                live_journals: &[],
                 alerts_open: false,
                 paper,
                 replay: None,
                 timezone: Default::default(),
                 route: None,
                 venue: None,
+                strategies: None,
             });
             assert_eq!(
                 registry.draw_slot_unscoped_with_env(
@@ -556,12 +570,14 @@ fn paper_report_composition_preserves_account_lifetime_and_tail_registration() {
             SurfaceResponse::default()
         );
         let mut env = BorrowedSurfaceEnv::Paper(PaperPanelEnv {
+            live_journals: &[],
             alerts_open: false,
             paper: &mut first,
             replay: None,
             timezone: Default::default(),
             route: None,
             venue: None,
+            strategies: None,
         });
         let response = registry.draw_slot_unscoped_with_env(
             Slot::FrameTailPaperPanels,

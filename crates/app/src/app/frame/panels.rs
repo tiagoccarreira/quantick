@@ -108,9 +108,17 @@ pub(super) fn draw_dock(
     ctx: &egui::Context,
     surfaces: &mut Surfaces,
     runtime: &mut crate::app::workspace_runtime::WorkspaceRuntime,
-    alerts_open: bool,
+    strategies: Option<&crate::strategy_desk::Rail>,
 ) -> SurfaceResponse {
+    let alerts_open = surfaces.alerts.is_open();
     let (tabs, route) = (&mut runtime.tabs, runtime.broker.sheet());
+    crate::app::paper_wiring::follow_journals(tabs);
+    let live = if surfaces.dock.model_state.tab() == Some(quantick_workspace::dock::DockTab::Trades)
+    {
+        crate::app::paper_wiring::journal_scope(tabs).live
+    } else {
+        Vec::new()
+    };
     let tab = tabs.runtime_mut(tabs.active_index());
     let source_ok = {
         let caps = *tab.link.feed_capabilities.borrow();
@@ -124,6 +132,7 @@ pub(super) fn draw_dock(
         ..
     } = tab;
     let mut env = BorrowedSurfaceEnv::Paper(PaperPanelEnv {
+        live_journals: &live,
         alerts_open,
         replay: link.replay.as_ref(),
         paper,
@@ -134,6 +143,7 @@ pub(super) fn draw_dock(
             symbol,
             source_ok,
         }),
+        strategies,
     });
     surfaces.draw_slot_unscoped_with_env(
         quantick_ui_model::Slot::LateEdgePanels,

@@ -6,9 +6,10 @@ use eframe::egui;
 use quantick_paper::pnl::PnlReader;
 use quantick_paper::report::layout::*;
 use quantick_paper::report::readout::LedgerTotals;
-use quantick_ui_model::paper_report::{
-    Effects, Intent, LedgerIntent, Load, LoadedLedger, LoadedReport, Model, State,
-};
+#[cfg(test)]
+use quantick_ui_model::paper_report::LoadedReport;
+use quantick_ui_model::paper_report::io::local_effects;
+use quantick_ui_model::paper_report::{Effects, Intent, LedgerIntent, Model, State};
 use quantick_ui_model::{Adapter, UpdateSession};
 
 mod curve;
@@ -20,7 +21,6 @@ mod sessions;
 mod tables;
 mod window;
 
-#[cfg(test)]
 pub(crate) use quantick_paper::report::LoadedHistory;
 pub(crate) use quantick_paper::report::ledger_rows::LedgerScope;
 pub(crate) use quantick_paper::report::snapshot::{OpenRow, ReportEnv};
@@ -28,6 +28,16 @@ pub(crate) use quantick_paper::report::{HistoryRow, ReportView, SourceFilter};
 #[cfg(test)]
 use quantick_sim::ClosedTrade;
 pub(crate) use quantick_ui_model::paper_report::LedgerAction;
+
+fn draw_history_warning(ui: &mut egui::Ui, history: &LoadedHistory) {
+    if let Some(warning) = history.scan_warning() {
+        ui.label(
+            egui::RichText::new(warning)
+                .color(crate::theme::get(ui.ctx()).warn())
+                .small(),
+        );
+    }
+}
 
 #[derive(Default)]
 pub(crate) struct ReportResponse {
@@ -87,8 +97,8 @@ impl Paint<'_, '_> {
                     event_code = "PAPER_REPORT_CUT", symbol = snapshot.symbol.unwrap_or("*"),
                     source = snapshot.source.label(), window = %snapshot.window.label(),
                     trades = snapshot.rows.len(), hidden_outside = snapshot.hidden_outside,
-                    hidden_by_source = snapshot.hidden_by_source, net_points = %snapshot.report.net_points,
-                    "the simulated performance report was re-cut");
+                    hidden_by_source_or_scope = snapshot.hidden_by_source_or_scope, net_points = %snapshot.report.net_points,
+                    "the trading performance report was re-cut");
             }
         }
         if self.native.report_layout_revision != self.report_layout_revision() {
@@ -98,29 +108,18 @@ impl Paint<'_, '_> {
     }
 }
 
-/// The existing IO, completed synchronously before UpdateSession returns.
-fn local_effects(mut effects: Effects, env: &ReportEnv<'_>) -> (Effects, Option<Intent>) {
-    let receipt = effects.load.take().map(|load| match load {
-        Load::Report(symbol) => Intent::LoadedReport(LoadedReport {
-            history: quantick_paper::report::load_history(env.dir, symbol.as_deref(), &[]),
-            symbols: crate::paper_chrome::list_symbol_folders(env.dir),
-        }),
-        Load::Ledger(scope) => {
-            let history = quantick_paper::report::load_history(
-                env.dir,
-                scope.folder(env.symbol),
-                env.session_journal_paths,
-            );
-            Intent::LoadedLedger(LoadedLedger::new(
-                history,
-                crate::paper_chrome::list_symbol_folders(env.dir),
-                env.pnl,
-            ))
-        }
-    });
-    (effects, receipt)
-}
 impl ReportAdapter {
+    pub(crate) fn sources(
+        &mut self,
+        sources: Option<quantick_paper::report::SourceSelection>,
+        tz: TzOffset,
+        env: &ReportEnv<'_>,
+    ) -> quantick_paper::report::snapshot::ReportReadout {
+        self.with(env, |paint| {
+            quantick_ui_model::paper_report::io::sources(paint.updates, sources, tz, env)
+        })
+        .0
+    }
     fn with<R>(
         &mut self,
         env: &ReportEnv<'_>,
@@ -143,11 +142,11 @@ impl ReportAdapter {
     fn event(&mut self, intent: Intent, env: &ReportEnv<'_>) {
         self.with(env, |paint| paint.update(intent));
     }
-    pub(crate) fn is_open(&self) -> bool {
-        self.report_open()
-    }
     pub(crate) fn open(&mut self, env: &ReportEnv<'_>) {
         self.event(Intent::Open(env.symbol.to_owned()), env);
+    }
+    pub(crate) fn reset(&mut self, env: &ReportEnv<'_>) {
+        self.event(Intent::ClearFilters(env.symbol.to_owned()), env);
     }
     pub(crate) fn trades_dir_changed(&mut self, env: &ReportEnv<'_>) {
         self.event(Intent::DirectoryChanged, env);
@@ -207,8 +206,9 @@ impl ReportAdapter {
         ui: &mut egui::Ui,
         tz: TzOffset,
         env: &ReportEnv<'_>,
+        live: &[std::path::PathBuf],
     ) -> Option<LedgerAction> {
-        self.with(env, |paint| paint.draw_trades_tab(ui, tz, env))
+        self.with(env, |paint| paint.draw_trades_tab(ui, tz, env, live))
             .1
             .ledger
     }
@@ -248,6 +248,9 @@ impl ReportAdapter {
 }
 #[cfg(test)]
 impl ReportAdapter {
+    pub(crate) fn is_open(&self) -> bool {
+        self.report_open()
+    }
     pub(crate) fn rescope_ledger(&mut self, env: &ReportEnv<'_>) {
         self.event(Intent::Ledger(LedgerIntent::Rescope), env);
     }

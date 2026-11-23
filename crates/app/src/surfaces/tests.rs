@@ -94,12 +94,14 @@ fn borrowed_domain_rows_reborrow_in_catalog_order() {
         settings.enabled = initial;
         paper.set_cmd_trading(settings);
         let mut env = BorrowedSurfaceEnv::Paper(PaperPanelEnv {
+            live_journals: &[],
             alerts_open: false,
             paper: &mut paper,
             replay: None,
             timezone: Default::default(),
             route: None,
             venue: None,
+            strategies: None,
         });
         let (response, canvas) = pass(&mut registry, &ctx, Slot::LateEdgePanels, Some(&mut env));
         assert_eq!(
@@ -169,6 +171,8 @@ fn borrowed_domain_rows_reborrow_in_catalog_order() {
     let drawings = DrawingEnv {
         linked_alerts: 0,
         pane_id: 42,
+        px_per_bar: 10.0,
+        note_display: &Default::default(),
         selected: None,
         selected_all_windows: false,
         chart_area: None,
@@ -193,12 +197,14 @@ fn borrowed_domain_rows_reborrow_in_catalog_order() {
     for env in [None, Some(&mut wrong)] {
         // Seed stale observations independently before each absent/wrong facet.
         let mut paper_env = BorrowedSurfaceEnv::Paper(PaperPanelEnv {
+            live_journals: &[],
             alerts_open: false,
             paper: &mut paper,
             replay: None,
             timezone: Default::default(),
             route: None,
             venue: None,
+            strategies: None,
         });
         pass(
             &mut registry,
@@ -253,12 +259,14 @@ fn borrowed_domain_rows_reborrow_in_catalog_order() {
     }
     let before = paper.cmd_trading();
     let mut env = BorrowedSurfaceEnv::Paper(PaperPanelEnv {
+        live_journals: &[],
         alerts_open: false,
         paper: &mut paper,
         replay: None,
         timezone: Default::default(),
         route: None,
         venue: None,
+        strategies: None,
     });
     let (response, canvas) = pass(&mut registry, &ctx, Slot::StatusLine, Some(&mut env));
     assert_eq!(response, SurfaceResponse::default());

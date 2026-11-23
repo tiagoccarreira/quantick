@@ -23,7 +23,7 @@ const PANE: u64 = 7;
 
 /// An account that records every command it is handed and is always flat.
 #[derive(Default)]
-struct RecordingPort {
+pub(crate) struct RecordingPort {
     applied: Vec<Command>,
 }
 
@@ -115,8 +115,8 @@ fn resting(drawing: DrawingId) -> AnchoredInstance<DrawingId> {
 #[test]
 fn orphaned_instance_returns_its_cleanup() {
     let mut strategies = TabStrategies::default();
-    let _ = strategies.pane_mut(PANE).anchors.arm(resting(DrawingId(3)));
-    strategies.queue_closed(PANE, &bar(106, 107), 4);
+    strategies.pane_mut(PANE).anchors.arm(resting(DrawingId(3)));
+    strategies.queue_closed(PANE, &bar(106, 107), None, 4, true);
     let mut port = RecordingPort::default();
     let answer = strategies.evaluate(
         &[PANE],
@@ -141,16 +141,16 @@ fn orphaned_instance_returns_its_cleanup() {
 #[test]
 fn an_idle_pane_queues_nothing_and_a_disarm_forgets_the_queue() {
     let mut strategies: TabStrategies<DrawingId> = TabStrategies::default();
-    strategies.queue_closed(PANE, &bar(1, 2), 0);
+    strategies.queue_closed(PANE, &bar(1, 2), None, 0, true);
     assert!(
         strategies.pane(PANE).is_none(),
         "the per-trade path opens no entry"
     );
     let pane = strategies.pane_mut(PANE);
-    pane.queue_closed(&bar(1, 2), 0);
-    assert!(pane.pending().is_empty(), "nothing armed, nothing cloned");
-    let _ = pane.anchors.arm(instance(DrawingId(1)));
-    pane.queue_closed(&bar(1, 2), 5);
+    pane.queue_closed(&bar(1, 2), None, 0, true);
+    assert_eq!(pane.pending().len(), 0, "nothing armed, nothing cloned");
+    pane.anchors.arm(instance(DrawingId(1)));
+    pane.queue_closed(&bar(1, 2), None, 5, true);
     assert_eq!(pane.pending().len(), 1);
     let cleanup = pane.disarm_all(DisarmReason::TimelineReset);
     assert!(cleanup.is_empty(), "nothing was resting");
@@ -160,8 +160,8 @@ fn an_idle_pane_queues_nothing_and_a_disarm_forgets_the_queue() {
 #[test]
 fn removal_and_disarm_queue_their_cancels_for_the_drain_in_pane_order() {
     let mut strategies = TabStrategies::default();
-    let _ = strategies.pane_mut(9).anchors.arm(resting(DrawingId(1)));
-    let _ = strategies.pane_mut(PANE).anchors.arm(resting(DrawingId(2)));
+    strategies.pane_mut(9).anchors.arm(resting(DrawingId(1)));
+    strategies.pane_mut(PANE).anchors.arm(resting(DrawingId(2)));
     strategies.pane_mut(9).remove_for_drawing(DrawingId(1));
     strategies.pane_mut(PANE).disarm(DrawingId(2));
     assert_eq!(
@@ -174,6 +174,63 @@ fn removal_and_disarm_queue_their_cancels_for_the_drain_in_pane_order() {
     assert!(
         strategies.take_cleanup(&[9, PANE]).is_empty(),
         "drained once"
+    );
+}
+
+/// The drawing's Disarm reaches every bot on it still watching, and its
+/// Re-arm every one that ended; another drawing's bot is left alone, and
+/// an ended sibling keeps its own reason through a Disarm, so a later
+/// Re-arm still re-warms the ruler a market switch emptied.
+#[test]
+fn disarm_and_rearm_reach_every_instance_on_the_drawing() {
+    use quantick_strategy::ArmedState;
+
+    let mut strategies = TabStrategies::default();
+    let pane = strategies.pane_mut(PANE);
+    pane.anchors.arm(resting(DrawingId(1)));
+    pane.anchors.arm(instance(DrawingId(1)));
+    pane.anchors.arm(instance(DrawingId(2)));
+    pane.anchors.arm(instance(DrawingId(1)));
+    let switched = pane.anchors.instances[3]
+        .armed
+        .disarm(DisarmReason::MarketChanged);
+    assert!(switched.is_empty());
+    pane.disarm(DrawingId(1));
+    let watching: Vec<_> = (pane.anchors.instances.iter())
+        .map(AnchoredInstance::watching)
+        .collect();
+    assert_eq!(
+        watching,
+        [false, false, true, false],
+        "only drawing 1's bots stop"
+    );
+    assert_eq!(
+        pane.anchors.instances[3].armed.state(),
+        &ArmedState::Disarmed {
+            reason: DisarmReason::MarketChanged
+        },
+        "the ended sibling keeps its reason"
+    );
+    assert_eq!(
+        strategies.take_cleanup(&[PANE]),
+        vec![Command::CancelOrder { id: OrderId(11) }]
+    );
+
+    let pane = strategies.pane_mut(PANE);
+    let _ = pane.anchors.instances[2].armed.disarm(DisarmReason::User);
+    let mut warmed = 0;
+    pane.rearm(DrawingId(1), |_| {
+        warmed += 1;
+        Vec::new()
+    });
+    assert_eq!(warmed, 1, "only the market switch asks for a re-warm");
+    let watching: Vec<_> = (pane.anchors.instances.iter())
+        .map(AnchoredInstance::watching)
+        .collect();
+    assert_eq!(
+        watching,
+        [true, true, false, true],
+        "drawing 1 re-armed, not 2"
     );
 }
 
@@ -210,8 +267,8 @@ fn a_refused_check_arms_nothing_and_a_passed_one_warms_on_the_series() {
 #[test]
 fn a_sweep_walks_only_the_panes_it_is_given() {
     let mut strategies = TabStrategies::default();
-    let _ = strategies.pane_mut(PANE).anchors.arm(resting(DrawingId(3)));
-    strategies.queue_closed(PANE, &bar(106, 107), 4);
+    strategies.pane_mut(PANE).anchors.arm(resting(DrawingId(3)));
+    strategies.queue_closed(PANE, &bar(106, 107), None, 4, true);
     let mut port = RecordingPort::default();
     let answer = strategies.evaluate(
         &[1],

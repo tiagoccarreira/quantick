@@ -67,12 +67,14 @@ impl FrameTailOwners<'_> {
                 };
                 let tab = self.tabs.runtime_mut(self.tabs.active_index());
                 let mut env = BorrowedSurfaceEnv::Paper(PaperPanelEnv {
+                    live_journals: &[],
                     alerts_open: false,
                     replay: tab.link.replay.as_ref(),
                     paper: &mut tab.paper,
                     timezone: input.tz,
                     route: None,
                     venue: None,
+                    strategies: None,
                 });
                 return self.surfaces.draw_slot_unscoped_with_env(
                     quantick_ui_model::Slot::FrameTailPaperPanels,

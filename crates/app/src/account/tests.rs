@@ -274,7 +274,10 @@ fn venue_session_snaps_pending_to_instrument_tick() {
         Decimal::from(167_605),
         "WIN tick 5: Invalid price (10015) without this"
     );
-    assert_eq!(session.snap_price(Decimal::from(167_602)), Decimal::from(167_600));
+    assert_eq!(
+        session.snap_price(Decimal::from(167_602)),
+        Decimal::from(167_600)
+    );
 }
 
 #[test]

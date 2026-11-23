@@ -23,6 +23,8 @@
 // work around a problem that was really the shadowing. There is no such rule.
 // The suffix fixes it; the second glob was redundant and is gone.
 
+mod strategy_describe_contract_tests;
+mod strategy_describe_tests;
 use crate::toolrail::ToolRailExt as _;
 use crate::toolrail::tests::ToolRailTestExt as _;
 // `DrawingsDemo` reached these files through `app.rs`'s own imports until the
@@ -149,8 +151,10 @@ mod rail_paint_tests;
 mod rectangle_extend_tests;
 mod retry_readback_tests;
 mod screenshot_evidence_tests;
+mod script_strategy_tests;
 mod session_length_tests;
 mod settled_frame;
+mod strategy_desk_wiring_tests;
 mod tab_workspace_tests;
 mod tape_only_scale_tests;
 mod theme_menu_tests;

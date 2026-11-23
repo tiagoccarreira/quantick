@@ -57,6 +57,7 @@ use crate::market_tab::RecoveredFeed;
 use crate::market_tab::{LentTab, MarketTab, MarketTabHost};
 use crate::notify::{Attention, AttentionHost, NotifyAccess};
 use crate::pane_marks::PaneMarks;
+use crate::session::{ReplayRead, SessionTab};
 use crate::settings::{SettingsAct, SettingsOwner, SettingsReadings, SettleError};
 use crate::tabs::{OpenTabs, TabDirectory};
 use crate::trade::{PaperHost, PaperOwner, TradeDesk};
@@ -390,6 +391,9 @@ pub(crate) struct FakeTab {
     pub panes: Vec<FakePane>,
     /// The tab plays a recorded session.
     pub replaying: bool,
+    /// The recording's symbol while one plays, as a replay puts it on the
+    /// tab; `symbol` keeps the live pair parked beneath it.
+    pub replay_symbol: Option<String>,
     /// The deal recorder's view; `None` on a feed with no counter.
     pub recording: Option<RecordingView>,
     /// What the recorder refuses to start or load with, when it refuses.
@@ -416,6 +420,7 @@ impl FakeTab {
             main_reach: HistoryReach::Hours(1),
             panes: Vec::new(),
             replaying: false,
+            replay_symbol: None,
             recording: None,
             recorder_refusal: None,
             recorder_acts: Vec::new(),
@@ -553,6 +558,20 @@ impl MarketTab for FakeTab {
     }
     fn session(&self) -> SessionSnapshot {
         self.snapshot(self.last_history)
+    }
+}
+
+/// The fake tab's market as the session scopes read it: the recording's
+/// symbol while one plays. No fake scope reads its paper desk.
+impl SessionTab for FakeTab {
+    fn symbol(&self) -> &str {
+        self.replay_symbol.as_deref().unwrap_or(&self.symbol)
+    }
+    fn desk(&self) -> &dyn TradeDesk {
+        unreachable!("the fake tab keeps no paper desk")
+    }
+    fn replay(&self) -> Option<Box<dyn ReplayRead + '_>> {
+        None
     }
 }
 
@@ -1021,6 +1040,7 @@ impl<T: PaperOwner + ?Sized> PaperOwner for &mut T {
 /// ledger's view, and every outcome a control call ran through it, for a
 /// parity test to hold against the tab's own surfaces.
 pub(crate) struct PaperDesk {
+    pub reports: Vec<quantick_paper::report::scope::ReportReceipt>,
     pub paper: TabPaper,
     pub view: LedgerView,
     pub outcomes: Vec<TradeOutcome>,
@@ -1029,6 +1049,7 @@ pub(crate) struct PaperDesk {
 impl PaperDesk {
     pub fn new(account: PaperAccount) -> Self {
         Self {
+            reports: Vec::new(),
             paper: TabPaper::new(account),
             view: LedgerView::default(),
             outcomes: Vec::new(),
@@ -1050,6 +1071,30 @@ impl std::ops::DerefMut for PaperDesk {
 }
 
 impl TradeDesk for PaperDesk {
+    fn report_sources(
+        &mut self,
+        sources: Option<quantick_paper::report::SourceSelection>,
+        _: TzOffset,
+    ) -> quantick_paper::report::snapshot::ReportReadout {
+        quantick_paper::report::snapshot::ReportReadout {
+            open: sources.is_some(),
+            loaded: false,
+            source: sources.unwrap_or_default(),
+            symbol: None,
+            window: "everything saved".to_owned(),
+            scope: None,
+            trade_count: 0,
+            unreadable_files: 0,
+            skipped_rows: 0,
+            net_points: Decimal::ZERO,
+        }
+    }
+    fn reset_report(&mut self) {
+        self.reports.clear();
+    }
+    fn show_report(&mut self, report: quantick_paper::report::scope::PreparedReport) {
+        self.reports.push(report.receipt);
+    }
     fn account(&self) -> &PaperAccount {
         &self.account
     }

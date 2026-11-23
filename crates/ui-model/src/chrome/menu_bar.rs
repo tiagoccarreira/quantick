@@ -12,6 +12,7 @@ pub enum Door {
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Action {
+    DescribeStrategy,
     Row(RowId),
     Workspace(WorkspaceCommand),
     SaveOnExit(bool),
@@ -76,7 +77,7 @@ pub enum Node {
 pub struct Workspace {
     pub name: String,
     pub symbol: String,
-    pub modified: bool,
+    pub can_save: bool,
     pub autosave: bool,
     pub followers: Vec<String>,
     pub choices: Vec<(String, String)>,
@@ -91,6 +92,7 @@ pub struct Snapshot {
     pub startup_saved: bool,
     pub save_on_exit: bool,
     pub dock_visible: bool,
+    pub describe_available: bool,
     pub selected_rows: Vec<RowId>,
     pub flow_pane_shown: bool,
     pub toolbox_dock: Option<quantick_chart_interaction::tool_rail::ToolboxDock>,
@@ -285,6 +287,7 @@ fn row(s: &Snapshot, id: RowId) -> Option<Row> {
         RowId::DockSession => s.dock_visible && s.dock_tab == Some(DockTab::Session),
         RowId::DockPaperTrading => s.dock_visible && s.dock_tab == Some(DockTab::Trading),
         RowId::DockTrades => s.dock_visible && s.dock_tab == Some(DockTab::Trades),
+        RowId::DockStrategies => s.dock_visible && s.dock_tab == Some(DockTab::Strategies),
         RowId::ToolbarLeft => s.toolbox_dock == Some(ToolboxDock::Left),
         RowId::ToolbarTop => s.toolbox_dock == Some(ToolboxDock::Top),
         RowId::ToolbarBottom => s.toolbox_dock == Some(ToolboxDock::Bottom),
@@ -296,7 +299,8 @@ fn row(s: &Snapshot, id: RowId) -> Option<Row> {
         RowId::SaveToWorkspace => {
             row.label = menu::save_to_label(&workspace.symbol, &workspace.name);
             row.hover = menu::save_to_hover(&workspace.followers);
-            row.enabled = workspace.modified;
+            row.enabled = workspace.can_save
+                && workspace.name != quantick_stores::workspaces::DEFAULT_WORKSPACE;
             row.action = Action::Workspace(WorkspaceCommand::SaveTo);
         }
         RowId::WorkspaceSaveAsNew => row.action = Action::Workspace(WorkspaceCommand::BeginSaveAs),
@@ -416,6 +420,12 @@ fn live(s: &Snapshot, rows: LiveRows) -> Vec<Node> {
             row.shortcut = Some(Shortcut::Legend);
             result.push(Node::Row(row));
         }
+        LiveRows::DescribeStrategy if s.describe_available && s.chart_shown => {
+            result.push(Node::Row(Row::new(
+                "Describe a strategy...",
+                Action::DescribeStrategy,
+            )));
+        }
         LiveRows::RecentFiles => {
             for (path, label) in &s.recent {
                 let mut row = Row::new(label, Action::Recent(path.clone()));
@@ -450,6 +460,7 @@ mod tests {
                 chart_shown: true,
                 workspace: Workspace {
                     name: quantick_stores::workspaces::DEFAULT_WORKSPACE.into(),
+                    can_save: true,
                     ..Default::default()
                 },
                 ..Default::default()
@@ -463,6 +474,7 @@ mod tests {
         for action in [
             Action::Row(RowId::CommandPalette),
             Action::Row(RowId::CloseReplay),
+            Action::Workspace(WorkspaceCommand::SaveTo),
             Action::Workspace(WorkspaceCommand::BeginRename(
                 quantick_stores::workspaces::DEFAULT_WORKSPACE.into(),
             )),

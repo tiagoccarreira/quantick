@@ -29,6 +29,12 @@ pub(crate) use quantick_control_host::authority::{ANNOTATE_PERMISSION_ID, ANNOTA
 /// The actions every instance registers. A later module adds one descriptor
 /// and one handler here; nothing else opens.
 pub(crate) fn standard_actions() -> Result<ActionRegistry, RegistryError> {
+    actions_for_strategy_describe(false)
+}
+
+pub(super) fn actions_for_strategy_describe(
+    available: bool,
+) -> Result<ActionRegistry, RegistryError> {
     let mut registry = ActionRegistry::new();
     quantick_control_handlers::alerts::register(&mut registry)?;
     quantick_control_handlers::attention::register(&mut registry)?;
@@ -62,6 +68,7 @@ pub(crate) fn standard_actions() -> Result<ActionRegistry, RegistryError> {
     quantick_control_handlers::contract_roll::register(&mut registry)?;
     quantick_control_handlers::history::register(&mut registry)?;
     quantick_control_handlers::journal_sessions::register(&mut registry)?;
+    quantick_control_handlers::session_reports::register(&mut registry)?;
     quantick_control_handlers::pnl_display::register(&mut registry)?;
     quantick_control_handlers::deal_recording::register(&mut registry)?;
     quantick_control_handlers::drawing_magnet::register(&mut registry)?;
@@ -71,9 +78,12 @@ pub(crate) fn standard_actions() -> Result<ActionRegistry, RegistryError> {
     quantick_control_handlers::native_indicator::register(&mut registry)?;
     quantick_control_handlers::chart_context::register(&mut registry)?;
     quantick_control_handlers::script_alarms::register(&mut registry)?;
+    quantick_control_handlers::script_strategy::register(&mut registry)?;
+    quantick_control_handlers::strategy_desk::register(&mut registry)?;
     quantick_control_handlers::script::register(&mut registry)?;
     quantick_control_handlers::script_editor::register(&mut registry)?;
     quantick_control_handlers::trade::register(&mut registry)?;
+    super::strategy_describe::register(&mut registry, available)?;
     Ok(registry)
 }
 

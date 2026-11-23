@@ -12,6 +12,128 @@ use quantick_sim::history;
 use quantick_trading::{ClosedTrade, ExitReason};
 use rust_decimal::Decimal;
 
+mod source_selection;
+
+#[test]
+fn scoped_open_replaces_stale_filters_and_reloads_keep_the_exact_session() {
+    let tz = TzOffset::new(-180);
+    let day = quantick_civil::parse_iso_date("2026-11-18").unwrap();
+    let key = SessionKey::parse("broker/WINZ26/20261118-124104.csv").unwrap();
+    let mut rows = vec![
+        row(
+            "WINZ26",
+            Some(history::SessionSource::Broker(
+                quantick_trading::TradeMode::Demo,
+            )),
+            trade_at(day.start_ms(tz) + 1, 5),
+        ),
+        row(
+            "X",
+            Some(history::SessionSource::Replay),
+            trade_at(day.start_ms(tz) + 2, 100),
+        ),
+    ];
+    rows[0].session = Some(key.clone());
+    rows[1].session = Some(SessionKey::parse("X/other.csv").unwrap());
+    let mut state = State::default();
+    Model::update(&mut state, Intent::Symbol(Some("X".to_owned())));
+    Model::update(&mut state, Intent::Source(SourceFilter::Replay.into()));
+    Model::update(
+        &mut state,
+        Intent::Dates(DaySelection::Anchor(day.offset_days(1))),
+    );
+    let scoped = |rows| {
+        Intent::Scoped(Box::new(PreparedReport {
+            receipt: ReportReceipt {
+                request: ReportRequest {
+                    session: key.clone(),
+                    day: None,
+                },
+                title: "Broker · Opening".to_owned(),
+                trades: 1,
+                net_points: Decimal::from(5),
+            },
+            history: history_rows(rows),
+            symbols: vec!["WINZ26".to_owned(), "X".to_owned()],
+        }))
+    };
+    Model::update(&mut state, scoped(rows.clone()));
+    state.ensure_report_view(tz, PnlReader::plain());
+    assert!(state.report_open());
+    assert!(state.report_symbol().is_none());
+    assert_eq!(state.calendar().selection, DaySelection::None);
+    assert_eq!(state.snapshot().unwrap().rows.len(), 1);
+    assert_eq!(
+        state.snapshot().unwrap().report.net_points,
+        Decimal::from(5)
+    );
+    assert_eq!(
+        Model::update(&mut state, Intent::JournalChanged).load,
+        Some(Load::Report(None))
+    );
+    rows[0].trade.pnl_points = Decimal::from(7);
+    Model::update(&mut state, loaded_report(rows.clone()));
+    state.ensure_report_view(tz, PnlReader::plain());
+    assert_eq!(state.snapshot().unwrap().rows.len(), 1);
+    assert_eq!(
+        state.snapshot().unwrap().report.net_points,
+        Decimal::from(7)
+    );
+    for reopen in [false, true] {
+        Model::update(&mut state, scoped(rows.clone()));
+        state.ensure_report_view(tz, PnlReader::plain());
+        assert_eq!(state.snapshot().unwrap().rows.len(), 1);
+        let symbol = "WINZ26".to_owned();
+        let intent = if reopen {
+            Model::update(&mut state, Intent::Close);
+            Intent::Open(symbol.clone())
+        } else {
+            Intent::ClearFilters(symbol.clone())
+        };
+        assert_eq!(
+            Model::update(&mut state, intent).load,
+            Some(Load::Report(Some(symbol)))
+        );
+        assert!(state.report_open());
+        assert!(state.report_scope().is_none());
+        assert_eq!(state.report_source(), SourceFilter::Real.into());
+    }
+}
+
+#[test]
+fn both_ledger_gesture_paths_request_the_same_scoped_load_and_closes_refresh_the_ledger() {
+    let request = ReportRequest {
+        session: SessionKey::parse("WINZ26/a.csv").unwrap(),
+        day: Some(quantick_civil::parse_iso_date("2026-11-18").unwrap()),
+    };
+    let tz = TzOffset::new(-180);
+    let mut state = State::default();
+    Model::update(&mut state, Intent::Ledger(LedgerIntent::Timezone(tz)));
+    for intent in [
+        LedgerIntent::Session(SessionPress::Report(request.clone())),
+        LedgerIntent::Rows(Box::new(RowInput {
+            session: Some(SessionPress::Report(request.clone())),
+            ..Default::default()
+        })),
+    ] {
+        assert_eq!(
+            Model::update(&mut state, Intent::Ledger(intent)).load,
+            Some(Load::Scoped(request.clone(), tz))
+        );
+    }
+    Model::update(&mut state, loaded_ledger(vec![]));
+    assert!(
+        Model::update(&mut state, Intent::JournalChanged)
+            .load
+            .is_none(),
+        "a closed report does no IO"
+    );
+    assert_eq!(
+        Model::update(&mut state, Intent::Ledger(LedgerIntent::EnsureLoaded)).load,
+        Some(Load::Ledger(LedgerScope::Chart))
+    );
+}
+
 #[test]
 fn delivered_effects_keep_import_and_latest_present_outputs_after_local_loads() {
     let mut output = Effects::default();
@@ -120,8 +242,8 @@ fn the_report_opens_on_real_and_keeps_replay_out_until_asked() {
     let day = 86_400_000_i64;
     let mut paper = ReportFixture::new();
     assert_eq!(
-        paper.report_state().report_source,
-        SourceFilter::Real,
+        paper.report_state().report_source(),
+        SourceFilter::Real.into(),
         "practice runs never inflate the real track record unasked"
     );
     paper.report_state_mut().report = Some(LoadedHistory {
@@ -149,7 +271,7 @@ fn the_report_opens_on_real_and_keeps_replay_out_until_asked() {
         .expect("view built");
     assert_eq!(view.rows.len(), 2, "live + unrecorded-legacy count as real");
     assert_eq!(
-        view.hidden_by_source, 1,
+        view.hidden_by_source_or_scope, 1,
         "the replay trade sits behind the filter"
     );
     assert_eq!(
@@ -159,22 +281,28 @@ fn the_report_opens_on_real_and_keeps_replay_out_until_asked() {
     );
     assert_eq!(view.report.net_points, Decimal::from(8));
 
-    paper.report_state_mut().report_source = SourceFilter::Replay;
+    Model::update(
+        paper.report_state_mut(),
+        Intent::Source(SourceFilter::Replay.into()),
+    );
     paper
         .report_state_mut()
         .ensure_report_view(utc, PnlReader::plain());
     let view = paper.report_state().report_view.as_ref().expect("rebuilt");
     assert_eq!(view.rows.len(), 1, "the practice run, alone");
     assert_eq!(view.report.net_points, Decimal::from(100));
-    assert_eq!(view.hidden_by_source, 2);
+    assert_eq!(view.hidden_by_source_or_scope, 2);
 
-    paper.report_state_mut().report_source = SourceFilter::All;
+    Model::update(
+        paper.report_state_mut(),
+        Intent::Source(SourceFilter::All.into()),
+    );
     paper
         .report_state_mut()
         .ensure_report_view(utc, PnlReader::plain());
     let view = paper.report_state().report_view.as_ref().expect("rebuilt");
     assert_eq!(view.rows.len(), 3, "All mixes on purpose");
-    assert_eq!(view.hidden_by_source, 0);
+    assert_eq!(view.hidden_by_source_or_scope, 0);
 }
 
 /// The report answers as data, not only as pixels: the snapshot names
@@ -218,10 +346,10 @@ fn the_report_reports_itself_as_data() {
         .ensure_report_view(tz, PnlReader::plain());
     let snapshot = paper.report_state().snapshot().expect("a snapshot");
     assert_eq!(snapshot.symbol, Some("WINV26"));
-    assert_eq!(snapshot.source, SourceFilter::Real);
+    assert_eq!(snapshot.source, SourceFilter::Real.into());
     assert_eq!(snapshot.window, ReportWindow::Period(ReportPeriod::All));
     assert_eq!(snapshot.rows.len(), 2, "the practice run is filtered out");
-    assert_eq!(snapshot.hidden_by_source, 1);
+    assert_eq!(snapshot.hidden_by_source_or_scope, 1);
     assert_eq!(snapshot.report.net_points, Decimal::from(2));
     assert_eq!(snapshot.window.label(), "everything saved");
 
@@ -434,6 +562,42 @@ fn a_picked_day_with_no_trades_reports_an_honest_empty() {
     assert_eq!(view.hidden_outside, 1, "the trade exists, just not here");
 }
 
+/// An empty report says why — the picked dates first, then the trades the
+/// source or a scope holds back, else the period — and offers "Clear
+/// filters" only while something narrows it past this symbol, all time.
+#[test]
+fn an_empty_report_names_why_and_offers_clear_only_when_narrowed() {
+    let tz = TzOffset::new(0);
+    let day = CivilDate::from_ymd(2026, 8, 12);
+    let mut state = State::default();
+    Model::update(&mut state, Intent::Symbol(Some("X".to_owned())));
+    Model::update(&mut state, Intent::Period(ReportPeriod::All));
+    assert!(
+        !state.filters_narrowed("X"),
+        "this symbol, all time, no dates"
+    );
+    assert!(state.filters_narrowed("Y"), "another symbol narrows it");
+    assert_eq!(
+        state.empty_hint(),
+        "X has no trades in everything saved. Try \"All\", or another symbol."
+    );
+    let replay = Some(history::SessionSource::Replay);
+    let rows = vec![row("X", replay, trade_at(day.start_ms(tz) + 1, 5))];
+    Model::update(&mut state, loaded_report(rows));
+    state.ensure_report_view(tz, PnlReader::plain());
+    assert_eq!(
+        state.empty_hint(),
+        "X has 1 trade(s) outside the selected source or report scope."
+    );
+    Model::update(&mut state, Intent::Dates(DaySelection::Anchor(day)));
+    assert!(state.filters_narrowed("X"), "picked dates narrow it");
+    assert_eq!(
+        state.empty_hint(),
+        "X closed no trades in 2026-08-12 - pick another day, or clear the date \
+         filter to go back to the period pills."
+    );
+}
+
 /// The calendar highlights days from the same trades the report would
 /// show — after the Source filter, on the display timezone's clock.
 #[test]
@@ -476,7 +640,10 @@ fn the_day_index_follows_the_source_filter_and_the_timezone() {
             .is_none()
     );
 
-    paper.report_state_mut().report_source = SourceFilter::All;
+    Model::update(
+        paper.report_state_mut(),
+        Intent::Source(SourceFilter::All.into()),
+    );
     paper
         .report_state_mut()
         .ensure_report_view(tz, PnlReader::plain());
@@ -666,7 +833,7 @@ fn paper_report_filters_calendar_and_snapshot_keep_one_owner() {
                         .unwrap();
                     session.update(Intent::InstallReport(cut));
                     assert_eq!(session.state().snapshot().unwrap().rows.len(), 1);
-                    session.update(Intent::Source(SourceFilter::All));
+                    session.update(Intent::Source(SourceFilter::All.into()));
                     session.update(Intent::Dates(DaySelection::Anchor(day.offset_days(1))));
                     let cut = session
                         .state()
@@ -674,7 +841,7 @@ fn paper_report_filters_calendar_and_snapshot_keep_one_owner() {
                         .unwrap();
                     session.update(Intent::InstallReport(cut));
                     let snapshot = session.state().snapshot().unwrap();
-                    assert_eq!(snapshot.source, SourceFilter::All);
+                    assert_eq!(snapshot.source, SourceFilter::All.into());
                     assert_eq!(
                         snapshot.window,
                         ReportWindow::Dates(DateRange::new(day.offset_days(1), day.offset_days(1)))
@@ -712,7 +879,7 @@ fn paper_report_projection_receipts_preserve_freshness_and_month() {
         ]),
     );
     let stale = state.project_report(tz, PnlReader::plain()).unwrap();
-    Model::update(&mut state, Intent::Source(SourceFilter::Replay));
+    Model::update(&mut state, Intent::Source(SourceFilter::Replay.into()));
     Model::update(&mut state, Intent::InstallReport(stale));
     assert!(
         state.report_view.is_none(),
@@ -766,7 +933,7 @@ fn paper_report_projection_receipts_preserve_freshness_and_month() {
         &mut state,
         loaded_report(vec![row("X", None, trade_at(january.start_ms(tz), 3))]),
     );
-    Model::update(&mut state, Intent::Source(SourceFilter::Real));
+    Model::update(&mut state, Intent::Source(SourceFilter::Real.into()));
     state.ensure_report_view(tz, pnl);
     assert_eq!(
         state.calendar.month,

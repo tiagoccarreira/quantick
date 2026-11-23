@@ -113,11 +113,11 @@ key and lost-reply proofs live in `crates/mcp/tests/fake_gateway.rs`.
 
 | Enforced | Capabilities |
 | --- | --- |
-| deduplicated per connection | 94 |
-| key refused; not retryable, read back | 17 |
-| key required; deduplicated per connection | 19 |
+| deduplicated per connection | 95 |
+| key refused; not retryable, read back | 27 |
+| key required; deduplicated per connection | 23 |
 | refused before dispatch: no grant reaches it | 11 |
-| **Total** | **141** |
+| **Total** | **156** |
 
 ## Capabilities
 
@@ -235,8 +235,23 @@ key and lost-reply proofs live in `crates/mcp/tests/fake_gateway.rs`.
 | `session.journal.delete` | 1 | optional | deduplicated per connection | `cockpit` | `events.read` `session.journal.changed` | `payload.journal_session` | an event after the pre-call cursor names the deleted session and where its file moved | `every_reachable_optional_row_replays_a_dropped_answer_and_begins_once` |
 | `session.journal.set` | 1 | optional | deduplicated per connection | `cockpit` | `events.read` `session.journal.changed` | `payload.journal_session` | an event after the pre-call cursor names the session and the name or tags, or the ledger view, the call asked for | `every_reachable_optional_row_replays_a_dropped_answer_and_begins_once` |
 | `session.pnl_display.set` | 1 | optional | deduplicated per connection | `cockpit` | `events.read` `session.pnl_display.changed` | `payload.pnl_display.primary` | an event after the pre-call cursor carries the requested mode as `primary` | `every_reachable_optional_row_replays_a_dropped_answer_and_begins_once` |
+| `session.report.open` | 1 | optional | deduplicated per connection | `cockpit` | `events.read` `session.report.opened` | `payload.report` | After a successful report open | `every_reachable_optional_row_replays_a_dropped_answer_and_begins_once` |
 | `settings.open` | 1 | optional | deduplicated per connection | `cockpit` | `snapshot.read` `scene.controls` | `controls[].selected` | the asked section's settings.section control is listed and selected | `every_reachable_optional_row_replays_a_dropped_answer_and_begins_once` |
 | `settings.set` | 1 | optional | deduplicated per connection | `cockpit` | `snapshot.read` `workspace.summary` | `timezone_offset_minutes, performance_readings_visible, progressive_venue_history, venue_lead_in` | each asked value is the one read | `every_reachable_optional_row_replays_a_dropped_answer_and_begins_once` |
+| `strategy.describe.cancel` | 1 | required | key required; deduplicated per connection | `annotator` | `events.read` `strategy.describe.changed` | `payload.operation, payload.revision` | the event after the pre-call cursor names the operation and resulting revision | `registered_contracts_are_inert` |
+| `strategy.describe.open` | 1 | required | key required; deduplicated per connection | `annotator` | `events.read` `strategy.describe.changed` | `payload.operation, payload.revision` | the event after the pre-call cursor names the operation and resulting revision | `registered_contracts_are_inert` |
+| `strategy.describe.save` | 1 | required | key required; deduplicated per connection | `annotator` | `events.read` `strategy.describe.changed` | `payload.operation, payload.revision` | the event after the pre-call cursor names the operation and resulting revision | `registered_contracts_are_inert` |
+| `strategy.describe.submit` | 1 | required | key required; deduplicated per connection | `annotator` | `events.read` `strategy.describe.changed` | `payload.operation, payload.revision` | the event after the pre-call cursor names the operation and resulting revision | `registered_contracts_are_inert` |
+| `strategy.desk.arm` | 1 | forbidden | key refused; not retryable, read back | `annotator` | `events.read` `strategy.desk.changed` | `payload.capability` | an event after the pre-call cursor names the call | `every_desk_action_has_a_call`, `every_reachable_forbidden_row_refuses_a_key_before_the_application` |
+| `strategy.desk.asset.pause` | 1 | forbidden | key refused; not retryable, read back | `annotator` | `events.read` `strategy.desk.changed` | `payload.capability` | an event after the pre-call cursor names the call | `every_desk_action_has_a_call`, `every_reachable_forbidden_row_refuses_a_key_before_the_application` |
+| `strategy.desk.asset.resume` | 1 | forbidden | key refused; not retryable, read back | `annotator` | `events.read` `strategy.desk.changed` | `payload.capability` | an event after the pre-call cursor names the call | `every_desk_action_has_a_call`, `every_reachable_forbidden_row_refuses_a_key_before_the_application` |
+| `strategy.desk.duplicate` | 1 | forbidden | key refused; not retryable, read back | `annotator` | `events.read` `strategy.desk.changed` | `payload.capability` | an event after the pre-call cursor names the call | `every_desk_action_has_a_call`, `every_reachable_forbidden_row_refuses_a_key_before_the_application` |
+| `strategy.desk.pause` | 1 | forbidden | key refused; not retryable, read back | `annotator` | `events.read` `strategy.desk.changed` | `payload.capability` | an event after the pre-call cursor names the call | `every_desk_action_has_a_call`, `every_reachable_forbidden_row_refuses_a_key_before_the_application` |
+| `strategy.desk.remove` | 1 | forbidden | key refused; not retryable, read back | `annotator` | `events.read` `strategy.desk.changed` | `payload.capability` | an event after the pre-call cursor names the call | `every_desk_action_has_a_call`, `every_reachable_forbidden_row_refuses_a_key_before_the_application` |
+| `strategy.desk.resume` | 1 | forbidden | key refused; not retryable, read back | `annotator` | `events.read` `strategy.desk.changed` | `payload.capability` | an event after the pre-call cursor names the call | `every_desk_action_has_a_call`, `every_reachable_forbidden_row_refuses_a_key_before_the_application` |
+| `strategy.desk.save_as` | 1 | forbidden | key refused; not retryable, read back | `annotator` | `events.read` `strategy.desk.changed` | `payload.capability` | an event after the pre-call cursor names the call | `every_desk_action_has_a_call`, `every_reachable_forbidden_row_refuses_a_key_before_the_application` |
+| `strategy.script.arm` | 1 | forbidden | key refused; not retryable, read back | `annotator` | `events.read` `strategy.script.armed` | `payload.strategy.id` | an event after the pre-call cursor names the armed instance, its script and placement as the call asked | `arm_list_and_disarm_a_script_strategy`, `every_reachable_forbidden_row_refuses_a_key_before_the_application` |
+| `strategy.script.disarm` | 1 | forbidden | key refused; not retryable, read back | `annotator` | `events.read` `strategy.script.disarmed` | `payload.id` | an event after the pre-call cursor carries the id the call named | `arm_list_and_disarm_a_script_strategy`, `every_reachable_forbidden_row_refuses_a_key_before_the_application` |
 | `tab.close` | 1 | optional | deduplicated per connection | `cockpit` | `events.read` `workspace.tab_closed` | `payload.tab_id` | an event after the pre-call cursor names the closed tab | `every_reachable_optional_row_replays_a_dropped_answer_and_begins_once` |
 | `tab.market.set` | 1 | optional | deduplicated per connection | `cockpit` | `snapshot.read` `feed.status` | `tabs[].active_symbol` | the tab reports the requested active_feed_id and active_symbol; feed_generation advances by one when the market changed and not otherwise | `every_reachable_optional_row_replays_a_dropped_answer_and_begins_once` |
 | `tab.workspace.set` | 1 | optional | deduplicated per connection | `cockpit` | `events.read` `workspace.tab_set` | `payload.workspace` | an event after the pre-call cursor names the requested workspace | `every_reachable_optional_row_replays_a_dropped_answer_and_begins_once` |
@@ -265,4 +280,4 @@ key and lost-reply proofs live in `crates/mcp/tests/fake_gateway.rs`.
 | `workspace.save_as` | 1 | optional | deduplicated per connection | `cockpit` | `events.read` `workspace.saved` | `payload.workspace` | an event after the pre-call cursor names the new workspace | `every_reachable_optional_row_replays_a_dropped_answer_and_begins_once` |
 | `workspace.save_to` | 1 | optional | deduplicated per connection | `cockpit` | `events.read` `workspace.saved` | `payload.workspace` | an event after the pre-call cursor names the tab's workspace | `every_reachable_optional_row_replays_a_dropped_answer_and_begins_once` |
 
-141 mutable capabilities registered, 141 with a readback.
+156 mutable capabilities registered, 156 with a readback.

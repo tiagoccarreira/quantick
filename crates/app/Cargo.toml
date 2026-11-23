@@ -93,6 +93,7 @@ serde_json = { workspace = true }
 smallvec = { workspace = true }
 toml = { workspace = true }
 tokio = { workspace = true }
+reqwest = { workspace = true, features = ["json"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 eframe = { workspace = true }
@@ -106,7 +107,6 @@ raw-window-handle = { workspace = true }
 # control plane calls it directly, and because a raster no viewer accepts
 # would make an evidence image useless to the human reading the bundle.
 png = { workspace = true }
-reqwest = { workspace = true, features = ["json"] }
 
 [target.'cfg(windows)'.dependencies]
 # Playback of the shipped alarm clips (`assets/alarms/`, see `audio/`). The
@@ -122,6 +122,7 @@ rodio = { workspace = true }
 windows-sys = { workspace = true }
 
 [dev-dependencies]
+quantick-paper = { path = "../paper", features = ["test-support"] }
 quantick-ui-model = { path = "../ui-model", features = ["test-support", "scenario-harness"] }
 # The gate clock the worker tests park a real worker on, and the ledger
 # schedules; the same fixture the crate proves itself with.

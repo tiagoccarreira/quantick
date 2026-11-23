@@ -28,6 +28,7 @@ pub enum RowId {
     DockSession,
     DockPaperTrading,
     DockTrades,
+    DockStrategies,
     ToolbarLeft,
     ToolbarTop,
     ToolbarBottom,
@@ -71,6 +72,7 @@ pub const SUBMENUS: &[SubmenuId] = &[
 /// A stretch of a menu whose rows are computed from live state by the app.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LiveRows {
+    DescribeStrategy,
     /// The layout book's tabs and the three edits the strip's own menu holds.
     LayoutBook,
     /// The canvas arrangements, from the layout registry.
@@ -128,7 +130,7 @@ const TOOLBAR_BEHAVIOUR: &str = "toolrail.dock.set";
 const HELP_BEHAVIOUR: &str = "window.help.open";
 const NO_EDITS_HOVER: &str = "This tab holds no edits";
 /// Why Default's Rename and Delete are greyed, in the menu and the dialog.
-pub const DEFAULT_PROTECTED_HOVER: &str = "Default cannot be deleted or renamed";
+pub const DEFAULT_PROTECTED_HOVER: &str = "Default is a locked built-in template; use Save as";
 
 /// Every command row of the window menu, in no particular order.
 pub const ROWS: &[Row] = &[
@@ -202,6 +204,7 @@ pub const ROWS: &[Row] = &[
     row(RowId::DockSession, "Session", DOCK_BEHAVIOUR),
     row(RowId::DockPaperTrading, "Paper trading", DOCK_BEHAVIOUR),
     row(RowId::DockTrades, "Trades", DOCK_BEHAVIOUR),
+    row(RowId::DockStrategies, "Strategies", DOCK_BEHAVIOUR),
     row(RowId::ToolbarLeft, "Left", TOOLBAR_BEHAVIOUR),
     row(RowId::ToolbarTop, "Top", TOOLBAR_BEHAVIOUR),
     row(RowId::ToolbarBottom, "Bottom", TOOLBAR_BEHAVIOUR),
@@ -309,11 +312,13 @@ pub const fn submenu(id: SubmenuId) -> (&'static str, &'static [Item]) {
         SubmenuId::Panels => (
             "Panels",
             &[
+                Item::Live(LiveRows::DescribeStrategy),
                 Item::Row(RowId::DockL2),
                 Item::Row(RowId::DockBubbles),
                 Item::Row(RowId::DockSession),
                 Item::Row(RowId::DockPaperTrading),
                 Item::Row(RowId::DockTrades),
+                Item::Row(RowId::DockStrategies),
                 Item::Separator,
                 Item::Caption("Drawing toolbar"),
                 Item::Row(RowId::ToolbarLeft),
@@ -525,7 +530,7 @@ pub const MANAGE_WORKSPACE_CAPTION: &str = "WORKSPACE";
 pub const MANAGE_TABS_CAPTION: &str = "TABS";
 /// The line under Default's row.
 pub const MANAGE_DEFAULT_NOTE: &str =
-    "Default is the fallback for tabs whose workspace is deleted. It cannot be renamed or deleted.";
+    "Locked built-in template, always available. Use Save as to keep your changes.";
 /// The pencil's and the trash's hovers.
 pub const MANAGE_RENAME_HOVER: &str = "Rename \u{b7} F2";
 pub const MANAGE_DELETE_HOVER: &str = "Delete \u{b7} Del";

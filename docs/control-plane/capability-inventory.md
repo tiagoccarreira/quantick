@@ -164,9 +164,28 @@ capability that cannot change application state.
 | `session.journal.delete` | 1 | `session` | no | `cockpit`, `cockpit.journal.delete` |
 | `session.journal.set` | 1 | `session` | no | `cockpit` |
 | `session.pnl_display.set` | 1 | `session` | no | `cockpit` |
+| `session.report.open` | 1 | `session` | no | `cockpit` |
 | `settings.open` | 1 | `settings` | no | `cockpit`, `cockpit.layout` |
 | `settings.set` | 1 | `settings` | no | `cockpit`, `cockpit.layout` |
 | `snapshot.read` | 1 | `snapshot` | yes | `observe` |
+| `strategy.describe.cancel` | 1 | `strategy` | no | `annotate`, `annotate.script`, `annotate.strategy_describe`, `observe.user_text` |
+| `strategy.describe.open` | 1 | `strategy` | no | `annotate`, `annotate.script`, `annotate.strategy_describe`, `observe.user_text` |
+| `strategy.describe.read` | 1 | `strategy` | yes | `observe`, `observe.user_text` |
+| `strategy.describe.save` | 1 | `strategy` | no | `annotate`, `annotate.script`, `annotate.strategy_describe`, `observe.user_text` |
+| `strategy.describe.submit` | 1 | `strategy` | no | `annotate`, `annotate.script`, `annotate.strategy_describe`, `observe.user_text` |
+| `strategy.desk.arm` | 1 | `strategy` | no | `annotate`, `annotate.script` |
+| `strategy.desk.asset.pause` | 1 | `strategy` | no | `annotate`, `annotate.script` |
+| `strategy.desk.asset.resume` | 1 | `strategy` | no | `annotate`, `annotate.script` |
+| `strategy.desk.detail` | 1 | `strategy` | yes | `observe`, `observe.indicators`, `observe.user_text` |
+| `strategy.desk.duplicate` | 1 | `strategy` | no | `annotate`, `annotate.script` |
+| `strategy.desk.list` | 1 | `strategy` | yes | `observe`, `observe.indicators`, `observe.user_text` |
+| `strategy.desk.pause` | 1 | `strategy` | no | `annotate`, `annotate.script` |
+| `strategy.desk.remove` | 1 | `strategy` | no | `annotate`, `annotate.script` |
+| `strategy.desk.resume` | 1 | `strategy` | no | `annotate`, `annotate.script` |
+| `strategy.desk.save_as` | 1 | `strategy` | no | `annotate`, `annotate.script` |
+| `strategy.script.arm` | 1 | `strategy` | no | `annotate`, `annotate.script` |
+| `strategy.script.disarm` | 1 | `strategy` | no | `annotate`, `annotate.script` |
+| `strategy.script.list` | 1 | `strategy` | yes | `observe`, `observe.indicators`, `observe.user_text` |
 | `tab.close` | 1 | `tab` | no | `cockpit`, `cockpit.desk` |
 | `tab.market.set` | 1 | `tab` | no | `cockpit`, `cockpit.recover` |
 | `tab.workspace.set` | 1 | `tab` | no | `cockpit`, `cockpit.layout` |
@@ -199,4 +218,4 @@ capability that cannot change application state.
 | `workspace.save_as` | 1 | `workspace` | no | `cockpit`, `cockpit.desk` |
 | `workspace.save_to` | 1 | `workspace` | no | `cockpit`, `cockpit.desk` |
 
-174 capabilities registered.
+193 capabilities registered.

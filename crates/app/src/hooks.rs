@@ -125,6 +125,10 @@ const CONFIGURATION: &[(&str, &[HookSpec])] = &[
 #[cfg(any(feature = "scenario-harness", test))]
 const SCENARIO_OWNERS: &[(&str, &[HookSpec])] = &[
     (
+        "crates/app/src/surfaces/strategy_describe/mod.rs",
+        crate::surfaces::strategy_describe::HOOKS,
+    ),
+    (
         "crates/app/src/surfaces/alerts/mod.rs",
         crate::surfaces::alerts::HOOKS,
     ),
@@ -166,6 +170,10 @@ const SCENARIO_OWNERS: &[(&str, &[HookSpec])] = &[
         crate::footprint_render::HOOKS,
     ),
     ("crates/app/src/frvp.rs", crate::frvp::HOOKS),
+    (
+        "crates/app/src/strategy_desk/window.rs",
+        crate::strategy_desk::window::HOOKS,
+    ),
     ("crates/app/src/harness.rs", crate::harness::HOOKS),
     ("crates/app/src/store_home.rs", crate::store_home::HOOKS),
     (

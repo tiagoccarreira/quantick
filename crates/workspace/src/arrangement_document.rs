@@ -50,6 +50,7 @@ pub enum SavedDockTab {
     Session,
     Trading,
     Trades,
+    Strategies,
 }
 
 impl SavedDockTab {
@@ -59,7 +60,7 @@ impl SavedDockTab {
         match self {
             Self::L2 => Some(PanelSection::L2),
             Self::Bubbles => Some(PanelSection::Bubbles),
-            Self::Session | Self::Trading | Self::Trades => None,
+            Self::Session | Self::Trading | Self::Trades | Self::Strategies => None,
         }
     }
 }
@@ -155,6 +156,12 @@ pub struct SavedTab {
     /// existed: the first run seeds one from what the tab shows.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace: Option<String>,
+    /// Distinguishes a current built-in reference from a legacy editable Default.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub protected_default: bool,
+    /// Held edits left by New workspace; selecting that workspace restores them.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub workspace_parked: std::collections::BTreeMap<String, WorkspaceRecipe>,
     /// The tab's unsaved copy of that recipe, present only while it differs, so
     /// an edited tab comes back still marked.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -167,13 +174,7 @@ pub struct SavedTab {
     pub candle_styles: Vec<SavedPaneStyle>,
 }
 
-/// Opaque style document interpreted and validated by the stores crate.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SavedPaneStyle {
-    pub pane_index: usize,
-    pub version: u32,
-    pub style: toml::Value,
-}
+pub use crate::workspace_recipe::SavedPaneStyle;
 
 impl SavedTab {
     /// Every layout id the tab's panes name.

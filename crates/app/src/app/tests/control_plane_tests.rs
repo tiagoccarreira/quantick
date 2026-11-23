@@ -5063,8 +5063,10 @@ fn observer_schemas(update: bool) {
     // Every published wire type has a committed document, so a breaking
     // change shows up as a diff in review (contract §6). The count is
     // here to make an accidental *removal* visible too.
-    assert_eq!(documents.len(), 189);
+    assert_eq!(documents.len(), 209);
     for file_name in [
+        "session-report-input-v1.schema.json",
+        "session-report-result-v1.schema.json",
         "session-journal-delete-input-v1.schema.json",
         "session-journal-input-v1.schema.json",
         "session-journal-result-v1.schema.json",
@@ -5162,6 +5164,7 @@ fn observer_catalog(update: bool) {
         } else {
             assert!(
                 capability["effect"] == "annotate"
+                        || capability["effect"] == quantick_control_host::authority::STRATEGY_PROVIDER_EFFECT_ID
                         || capability["effect"] == "notify"
                         || capability["effect"] == "cockpit"
                         // Acknowledged deliberately, as the paragraph above

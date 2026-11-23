@@ -9,6 +9,9 @@ use rust_decimal::Decimal;
 
 use super::*;
 
+#[path = "broker_tests.rs"]
+mod broker;
+
 /// A closed trade that netted `pnl` points, closing at `closed_ms`.
 fn trade_at(closed_ms: i64, pnl: i64) -> ClosedTrade {
     ClosedTrade {
@@ -119,12 +122,66 @@ fn the_equity_walk_is_cut_once_and_both_readers_share_it() {
     assert_eq!((empty.low, empty.high), (0.0, 0.0));
 }
 
+/// The support line names the window it cut and every trade it kept out:
+/// older trades behind the period, others behind picked dates, and those
+/// the source filter or a report scope set aside.
+#[test]
+fn the_scope_line_accounts_for_every_hidden_trade() {
+    let (day, utc) = (86_400_000_i64, TzOffset::new(0));
+    let live = Some(history::SessionSource::Live);
+    let history = LoadedHistory {
+        rows: vec![
+            row("X", live, trade_at(day + 1_000, 1)),
+            row("X", live, trade_at(5 * day + 1_000, 2)),
+            row(
+                "X",
+                Some(history::SessionSource::Replay),
+                trade_at(9 * day, 3),
+            ),
+            row("X", live, trade_at(10 * day + 1_000, 4)),
+        ],
+        files: 1,
+        unreadable_files: 0,
+        problem_rows: 0,
+        sessions: BTreeMap::new(),
+    };
+    let week = ReportView::cut(&history, ReportPeriod::Week, SourceFilter::Real, None, utc);
+    assert_eq!(
+        week.scope_line(),
+        "the last 7 days up to 1970-01-11 (newest saved trade, not the wall clock) \
+         - 1 older saved trade(s) before this window \
+         - 1 trade(s) outside the selected source or report scope"
+    );
+    let picked = DateRange::new(
+        CivilDate::from_ymd(1970, 1, 11),
+        CivilDate::from_ymd(1970, 1, 6),
+    );
+    let range = ReportView::cut(
+        &history,
+        ReportPeriod::Week,
+        SourceFilter::Real,
+        Some(picked),
+        utc,
+    );
+    assert_eq!(
+        range.scope_line(),
+        "1970-01-06 to 1970-01-11 (6 day(s), the dates you picked - the period pills are \
+         standing down) - 1 saved trade(s) outside these dates \
+         - 1 trade(s) outside the selected source or report scope"
+    );
+    let none = ReportView::cut(&history, ReportPeriod::All, SourceFilter::Broker, None, utc);
+    assert_eq!(
+        none.scope_line(),
+        "no saved trades in this scope - 4 trade(s) outside the selected source or report scope"
+    );
+}
+
 /// The expected report, byte for byte. Regenerated only when a
 /// *behaviour* change is intended and argued for.
 const GOLDEN_REPORT: &str = r#"== ALL ==
 rows: 8
 hidden_outside: 0
-hidden_by_source: 1
+hidden_by_source_or_scope: 1
 anchor_ms: Some(1728000000)
 equity.points: [0, 12, 7, 4, 4, 13, 5, 9, 15]
 equity.plot: [0.0, 12.0, 7.0, 4.0, 4.0, 13.0, 5.0, 9.0, 15.0]
@@ -257,7 +314,7 @@ equity.low: 0.0  equity.high: 15.0
 == WEEK ==
 rows: 5
 hidden_outside: 3
-hidden_by_source: 1
+hidden_by_source_or_scope: 1
 anchor_ms: Some(1728000000)
 equity.points: [0, 0, 9, 1, 5, 11]
 equity.plot: [0.0, 0.0, 9.0, 1.0, 5.0, 11.0]
@@ -509,7 +566,10 @@ fn dump_report(view: &ReportView) -> String {
     let mut out = String::new();
     out.push_str(&format!("rows: {}\n", view.rows.len()));
     out.push_str(&format!("hidden_outside: {}\n", view.hidden_outside));
-    out.push_str(&format!("hidden_by_source: {}\n", view.hidden_by_source));
+    out.push_str(&format!(
+        "hidden_by_source_or_scope: {}\n",
+        view.hidden_by_source_or_scope
+    ));
     out.push_str(&format!("anchor_ms: {:?}\n", view.anchor_ms));
     out.push_str(&format!("equity.points: {:?}\n", view.equity.points));
     out.push_str(&format!("equity.plot: {:?}\n", view.equity.plot));

@@ -9,6 +9,7 @@ mod chrome_probe_view;
 
 /// The actual paper owner and frame facts needed by a paper panel.
 pub(crate) struct PaperPanelEnv<'a> {
+    pub live_journals: &'a [std::path::PathBuf],
     /// Whether the alert manager is up, so the rail's bell reads as pressed.
     pub alerts_open: bool,
     pub paper: &'a mut crate::paper_trading::PaperTrading,
@@ -18,6 +19,8 @@ pub(crate) struct PaperPanelEnv<'a> {
     pub route: Option<&'a quantick_paper::route::Sheet>,
     /// MCP Conta plate (Prod/Demo ticket + positions), when configured.
     pub venue: Option<crate::account::VenuePlateEnv<'a>>,
+    /// The Strategies tab's rows, read only while it is open.
+    pub strategies: Option<&'a crate::strategy_desk::Rail>,
 }
 /// Validated indicator address and authoritative descriptor/preset services.
 pub(crate) struct IndicatorPanelEnv<'a> {
@@ -380,6 +383,12 @@ macro_rules! register_surfaces {
 quantick_ui_model::surface_catalog!(register_surfaces);
 
 impl Surfaces {
+    pub(crate) fn with_describe_provider(worker: strategy_describe::provider::Worker) -> Self {
+        let mut surfaces = Self::default();
+        surfaces.strategy_describe.view.worker = worker;
+        surfaces
+    }
+
     #[cfg(test)]
     fn trace_phase(&mut self, phase: &'static str, entry: &'static str) {
         if let Some(trace) = self.phase_trace.as_mut() {

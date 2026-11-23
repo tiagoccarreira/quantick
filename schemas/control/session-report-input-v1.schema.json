@@ -1,0 +1,118 @@
+{
+  "$defs": {
+    "JournalSourceFilter": {
+      "description": "The ledger's source pills.",
+      "oneOf": [
+        {
+          "const": "broker",
+          "description": "Trades sent to a broker, including DEMO and REAL accounts.",
+          "type": "string"
+        },
+        {
+          "const": "simulator",
+          "description": "All simulator trades, on live and replay feeds.",
+          "type": "string"
+        },
+        {
+          "const": "real",
+          "description": "Live sessions, and files from before a source was recorded.",
+          "type": "string"
+        },
+        {
+          "const": "replay",
+          "description": "Replay-driven practice sessions.",
+          "type": "string"
+        },
+        {
+          "const": "both",
+          "description": "Everything.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "const": "ordinary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Set the union of sources, or omit sources to inspect the current report.",
+      "properties": {
+        "action": {
+          "const": "sources",
+          "type": "string"
+        },
+        "sources": {
+          "default": null,
+          "items": {
+            "$ref": "#/$defs/JournalSourceFilter"
+          },
+          "maxItems": 5,
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "const": "session",
+          "type": "string"
+        },
+        "session": {
+          "maxLength": 512,
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "session"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "const": "day",
+          "type": "string"
+        },
+        "day": {
+          "maxLength": 10,
+          "minLength": 10,
+          "type": "string"
+        },
+        "session": {
+          "maxLength": 512,
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "session",
+        "day"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "ReportInput"
+}

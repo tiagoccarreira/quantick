@@ -42,13 +42,13 @@ The three exclusion classes are closed:
 
 | Outcome | Behaviours |
 | --- | --- |
-| Reachable by capability | 148 |
+| Reachable by capability | 149 |
 | Excluded: `authority` | 4 |
 | Excluded: `ui_only_by_decision` | 7 |
 | Excluded: `pending_capability` | 35 |
-| **Total** | **194** |
+| **Total** | **195** |
 
-99 of the 194 rows claim at least one registry entry, so the drift guard fails when the interface changes under them. The other 95 say in the table that no registry stands behind them — a drag on a splitter, a number typed into the ticket — each with the reason, listed in full below. A row that says neither is a guard failure, not a third category.
+100 of the 195 rows claim at least one registry entry, so the drift guard fails when the interface changes under them. The other 95 say in the table that no registry stands behind them — a drag on a splitter, a number typed into the ticket — each with the reason, listed in full below. A row that says neither is a guard failure, not a third category.
 
 ## Behaviours
 
@@ -107,7 +107,7 @@ The three exclusion classes are closed:
 | `canvas.pane.return` | Bring a chart from its own window back over the canvas | the chart window's ⋯ menu, Return to canvas; closing that window | `canvas.pane.return` | — |
 | `canvas.pane.resize` | Resize docked charts of a canvas layout | drag the divider between two docked charts of a layout the canvas tree lays out | `canvas.pane.resize` | — |
 | `canvas.seam.drag` | Fold a docked chart to its rail, or reopen it, by its seam | drag a seam of a layout the canvas tree lays out to the canvas edge, or a rail back | `canvas.seam.drag` | — |
-| `dock.tab.open` | Open a panel — session, trading or trades | window menu, Panels, the dock's own strip | — | `pending_capability` — no capability opens or closes this surface; an operator can read what is on screen and not change it. Tracked in issue 401 |
+| `dock.tab.open` | Open a panel — session, trading, trades or strategies | window menu, Panels, the dock's own strip | — | `pending_capability` — no capability opens or closes this surface; an operator can read what is on screen and not change it. Tracked in issue 401 |
 | `dock.toggle` | Show or hide the panels dock | toolbar sidebar button, window menu, Ctrl+Shift+B | — | `pending_capability` — no capability opens or closes this surface; an operator can read what is on screen and not change it. Tracked in issue 401 |
 | `layer.bubbles.toggle` | Switch the aggression bubbles on or off | trail capsule glyph, pane right-click layer menu, Ctrl+B | `layers.visibility.set` | — |
 | `layer.footprint.settings.open` | Open the footprint's settings window | right-click the capsule's footprint glyph; the pane's footprint menu | `chart.settings.set` | — |
@@ -151,6 +151,7 @@ The three exclusion classes are closed:
 | `indicator.script.remove` | Remove a script indicator | the legend row's close, and the indicator picker | `indicator.script.detach` | — |
 | `indicator.settings.open` | Open an indicator's settings | the legend row's gear, and the indicator picker | — | `pending_capability` — no capability opens or closes this surface; an operator can read what is on screen and not change it. Tracked in issue 401 |
 | `indicator.source.edit` | Read, copy and edit Pine source | Indicators > Scripts > View source; Pine source window | `indicator.library.edit` | — |
+| `strategy.describe` | Describe a strategy | Panels > Describe a strategy... | `strategy.describe.open`, `strategy.describe.read`, `strategy.describe.submit`, `strategy.describe.cancel`, `strategy.describe.save` | — |
 | `trade.account.route` | Choose where orders go: the simulator or the broker account | the Trading panel's Account selector, the toolbar's orders notice | `trade.account.select` | — |
 | `trade.aim.bracket` | Send an entry with its stop and target attached | the ticket's bracket fields, and the aim on the chart | `trade.order.bracket` | — |
 | `trade.instrument.money.set` | Declare what one point of an instrument is worth | the Trading panel's instrument section | `trade.instrument.set_money` | — |
@@ -260,7 +261,7 @@ matrix fails the build.
 | `toolbar_action` | 22 |
 | `strip_action` | 6 |
 | `tab_action` | 4 |
-| `dock_tab` | 3 |
+| `dock_tab` | 4 |
 | `layer_toggle` | 6 |
 | `drawing_tool` | 22 |
 | `rail_tool` | 2 |
@@ -268,7 +269,7 @@ matrix fails the build.
 | `layout_preset` | 16 |
 | `notice_action` | 3 |
 | `hotkey` | 25 |
-| `menu_entry` | 47 |
+| `menu_entry` | 49 |
 | `scripted_menu` | 0 |
 | `authored` | 97 |
 

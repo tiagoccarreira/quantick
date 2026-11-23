@@ -21,15 +21,19 @@ use crate::format::sanitize_symbol;
 use quantick_civil::{CivilDate, DAY_MS, DateRange, TzOffset};
 
 pub mod fit;
+pub mod journals;
 pub mod layout;
 pub mod ledger_state;
 pub mod readout;
+pub mod scope;
 pub mod scroll_probe;
 pub mod session_edit;
 pub mod sessions;
 pub mod snapshot;
+pub mod sources;
 
 pub use readout::EquityWalk;
+pub use sources::SourceSelection;
 
 use sessions::{SessionInfo, SessionKey};
 
@@ -67,10 +71,31 @@ pub struct LoadedHistory {
     pub sessions: BTreeMap<SessionKey, SessionInfo>,
 }
 
-/// The report's session-source filter. Default `Real`: practice runs must
-/// never inflate the real track record unasked.
+impl LoadedHistory {
+    pub fn scan_warning(&self) -> Option<String> {
+        (self.unreadable_files > 0 || self.problem_rows > 0).then(|| {
+            format!(
+                "{} file(s) unreadable, {} row(s) skipped - counted, never silently dropped.",
+                self.unreadable_files, self.problem_rows,
+            )
+        })
+    }
+
+    pub fn scan_summary(&self) -> String {
+        format!(
+            "Loaded history total · {} trade(s), {} journal file(s) checked",
+            self.rows.len(),
+            self.files
+        )
+    }
+}
+
+/// Execution origin and feed filters. The legacy `Real` identifier means
+/// simulator-on-live-feed; broker executions have their own explicit filter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SourceFilter {
+    Broker,
+    Simulator,
     /// Live sessions, plus files from before the source was recorded.
     Real,
     /// Replay-driven practice sessions only.
@@ -81,38 +106,49 @@ pub enum SourceFilter {
 
 impl SourceFilter {
     /// Every filter, in pill order.
-    pub const PILLS: [Self; 3] = [Self::Real, Self::Replay, Self::All];
+    pub const PILLS: [Self; 5] = [
+        Self::Broker,
+        Self::Simulator,
+        Self::Real,
+        Self::Replay,
+        Self::All,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Real => "Real",
+            Self::Broker => "Broker",
+            Self::Simulator => "Simulator",
+            Self::Real => "Sim live",
             Self::Replay => "Replay",
             // Not "All": the period pills own that word on the same row,
             // and two identical pills a hand-width apart invite the wrong
             // click.
-            Self::All => "Both",
+            Self::All => "All sources",
         }
     }
 
     pub fn hover(self) -> &'static str {
         match self {
-            Self::Real => {
-                "live sessions - files saved before quantick recorded a source count as real"
-            }
+            Self::Broker => "executions sent to the broker, including DEMO and REAL accounts",
+            Self::Simulator => "simulator trades on live and replay feeds",
+            Self::Real => "simulator sessions on a live feed, including legacy simulator files",
             Self::Replay => "practice sessions driven by a market-replay recording",
-            Self::All => "live and replay together - mixed on purpose",
+            Self::All => "broker and simulator history, identified separately",
         }
     }
 
     /// Whether a row with this recorded source belongs to the filter.
     pub fn admits(self, source: Option<history::SessionSource>) -> bool {
         match self {
+            Self::Broker => matches!(source, Some(history::SessionSource::Broker(_))),
+            Self::Simulator => !matches!(source, Some(history::SessionSource::Broker(_))),
             // Exhaustive on purpose: a future source variant must not fall
             // into the real track record by default — adding one forces
             // this match to say where it belongs.
             Self::Real => match source {
                 None | Some(history::SessionSource::Live) => true,
                 Some(history::SessionSource::Replay) => false,
+                Some(history::SessionSource::Broker(_)) => false,
             },
             Self::Replay => source == Some(history::SessionSource::Replay),
             Self::All => true,
@@ -205,23 +241,19 @@ pub fn load_history(dir: &Path, symbol: Option<&str>, exclude: &[PathBuf]) -> Lo
                 continue;
             }
             problem_rows += parsed.problems.len();
-            let source = parsed.source;
+            let sources = std::mem::take(&mut parsed.sources);
             let refs = parsed.refs();
             let mut tags = std::mem::take(&mut parsed.tags);
-            rows.extend(
-                parsed
-                    .trades
-                    .into_iter()
-                    .zip(refs)
-                    .map(|(trade, at)| HistoryRow {
-                        symbol: symbol.clone(),
-                        source,
-                        session: key.clone(),
-                        trade_ref: at,
-                        tags: tags.remove(&at).unwrap_or_default(),
-                        trade,
-                    }),
-            );
+            rows.extend(parsed.trades.into_iter().zip(refs).zip(sources).map(
+                |((trade, at), source)| HistoryRow {
+                    symbol: symbol.clone(),
+                    source,
+                    session: key.clone(),
+                    trade_ref: at,
+                    tags: tags.remove(&at).unwrap_or_default(),
+                    trade,
+                },
+            ));
         }
     }
     // A live file the scope left out still names and tags this session's
@@ -363,7 +395,7 @@ pub fn fmt_period_ms(period_ms: i64) -> String {
 /// order, their aggregation, and the anchor the period was measured from.
 pub struct ReportView {
     pub period: ReportPeriod,
-    pub source: SourceFilter,
+    pub source: SourceSelection,
     /// The calendar span in force. `Some` puts the report on absolute
     /// dates and takes the anchor-relative pills out of the cut; `None`
     /// leaves them in charge, which is exactly what the report did before
@@ -377,8 +409,8 @@ pub struct ReportView {
     /// Saved trades the window keeps out — the honest answer to "where did
     /// my old trades go": they exist, the filter just stops short of them.
     pub hidden_outside: usize,
-    /// Saved trades the Source filter keeps out of this view.
-    pub hidden_by_source: usize,
+    /// Loaded trades excluded by the source filter or session/day scope, before the time window.
+    pub hidden_by_source_or_scope: usize,
     /// The filtered trades, each still carrying the symbol folder and the
     /// session source it was journaled under — the report lists them, and
     /// a list that could not name its instrument would be the very gap
@@ -412,16 +444,29 @@ impl ReportView {
     pub fn cut(
         history: &LoadedHistory,
         period: ReportPeriod,
-        source: SourceFilter,
+        source: impl Into<SourceSelection>,
         range: Option<DateRange>,
         tz: TzOffset,
     ) -> Self {
+        Self::cut_scoped(history, period, source, range, tz, None)
+    }
+
+    pub fn cut_scoped(
+        history: &LoadedHistory,
+        period: ReportPeriod,
+        source: impl Into<SourceSelection>,
+        range: Option<DateRange>,
+        tz: TzOffset,
+        scope: Option<&scope::ReportRequest>,
+    ) -> Self {
+        let source = source.into();
         let in_scope: Vec<&HistoryRow> = history
             .rows
             .iter()
             .filter(|row| source.admits(row.source))
+            .filter(|row| scope.is_none_or(|scope| scope.admits(row, tz)))
             .collect();
-        let hidden_by_source = history.rows.len().saturating_sub(in_scope.len());
+        let hidden_by_source_or_scope = history.rows.len().saturating_sub(in_scope.len());
         let anchor_ms = in_scope.last().map(|row| row.trade.closed_ms);
         let cutoff = match range {
             Some(_) => None,
@@ -446,7 +491,7 @@ impl ReportView {
             tz,
             anchor_ms,
             hidden_outside,
-            hidden_by_source,
+            hidden_by_source_or_scope,
             rows,
             equity,
             report,
@@ -455,6 +500,44 @@ impl ReportView {
             net_tint: rust_decimal::Decimal::ZERO,
             pnl_key: None,
         }
+    }
+
+    /// The support line under the report's filters, stating the window out
+    /// loud: a picked range in absolute dates, else the period counted back
+    /// from the newest saved trade (never the wall clock), then what it
+    /// keeps out — "where did my old trades go" gets a literal answer.
+    #[must_use]
+    pub fn scope_line(&self) -> String {
+        if self.source == SourceSelection::default() {
+            return self.source.label().to_owned();
+        }
+        let mut text = match (self.range, self.anchor_ms) {
+            (Some(range), _) => format!(
+                "{} ({} day(s), the dates you picked - the period pills are standing down)",
+                range.label(),
+                range.days(),
+            ),
+            (None, Some(anchor)) => format!(
+                "{} up to {} (newest saved trade, not the wall clock)",
+                self.period.phrase(),
+                CivilDate::from_ms(anchor, self.tz).iso(),
+            ),
+            (None, None) => "no saved trades in this scope".to_owned(),
+        };
+        if self.hidden_outside > 0 {
+            let place = match self.range {
+                Some(_) => "saved trade(s) outside these dates",
+                None => "older saved trade(s) before this window",
+            };
+            text.push_str(&format!(" - {} {place}", self.hidden_outside));
+        }
+        if self.hidden_by_source_or_scope > 0 {
+            text.push_str(&format!(
+                " - {} trade(s) outside the selected source or report scope",
+                self.hidden_by_source_or_scope,
+            ));
+        }
+        text
     }
 }
 
