@@ -109,6 +109,34 @@ impl IndicatorWiring<'_> {
     }
 
     pub(super) fn apply_indicator_settings_change(&mut self, change: SettingsChange) {
+        if let SettingsChange::Window { target, join } = change {
+            if self.runtime.validate_target(target).is_err() {
+                return;
+            }
+            let affected = {
+                let Some(tab) = self.runtime.tabs.by_id_mut(target.tab) else {
+                    return;
+                };
+                let indicators = &mut tab.pane_mut(target.side).indicators;
+                match join {
+                    Some(other) => {
+                        indicators.join_window(target.slot, SlotId(other));
+                        vec![target.slot, SlotId(other)]
+                    }
+                    None => {
+                        indicators.detach_window(target.slot);
+                        vec![target.slot]
+                    }
+                }
+            };
+            let mut layout = self.layout();
+            for slot in affected {
+                let mut owner = target;
+                owner.slot = slot;
+                layout.mirror_window(owner);
+            }
+            return;
+        }
         if self.runtime.validate_target(change.target()).is_err() {
             return;
         }
@@ -221,6 +249,7 @@ impl IndicatorWiring<'_> {
         }
         let target = self.surfaces.indicator_settings.model_state.target();
         let valid_target = target.filter(|target| self.runtime.validate_target(*target).is_ok());
+        let mates = valid_target.and_then(|target| window_mates(&self.runtime, target));
         let view = valid_target.and_then(|target| {
             self.runtime
                 .tabs
@@ -237,6 +266,7 @@ impl IndicatorWiring<'_> {
                 kind,
                 presets: &mut self.runtime.indicators.indicator_presets,
                 presets_path: self.runtime.workspace.indicator_presets_path(),
+                mates: mates.as_deref(),
             });
         let response = self.surfaces.draw_slot_unscoped_with_env(
             quantick_ui_model::Slot::EditorDialogs,
@@ -289,4 +319,41 @@ impl IndicatorWiring<'_> {
             self.apply_indicator_legend_action(tab_id, side, action);
         }
     }
+}
+
+fn window_mates(
+    runtime: &WorkspaceRuntime,
+    target: quantick_chart::indicator_registry::TabSlot,
+) -> Option<Vec<crate::indicator_panel::WindowMate>> {
+    let tab = runtime.tabs.by_id(target.tab)?;
+    let pane = tab
+        .pane_at(target.side.index())
+        .filter(|pane| pane.id == target.pane)?;
+    let mine = pane
+        .indicators
+        .all()
+        .iter()
+        .find(|view| view.slot == target.slot)?;
+    if mine.descriptor.overlay {
+        return None;
+    }
+    let mine_window = mine.window;
+    let mine_slot = mine.slot;
+    Some(
+        pane.indicators
+            .all()
+            .iter()
+            .filter(|view| {
+                view.slot != mine_slot
+                    && !view.descriptor.overlay
+                    && !view.hidden
+                    && view.error.is_none()
+            })
+            .map(|view| crate::indicator_panel::WindowMate {
+                slot: view.slot.0,
+                label: view.label().to_owned(),
+                shared: mine_window != 0 && view.window == mine_window,
+            })
+            .collect(),
+    )
 }

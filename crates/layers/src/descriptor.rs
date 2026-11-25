@@ -239,6 +239,6 @@ pub mod blocks {
     );
     pub const NO_MCP_TOKEN: LayerBlock = LayerBlock::new(
         "configure_mcp_token",
-        "configure mcp_token in quantick.toml or QUANTICK_MT5_MCP_TOKEN",
+        "configure this connection's mcp token in quantick.toml or QUANTICK_MT5_MCP_TOKEN",
     );
 }

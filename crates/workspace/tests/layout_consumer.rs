@@ -45,6 +45,7 @@ impl Consumer {
 #[test]
 fn panes_share_definitions_and_switching_touches_only_indicators() {
     let indicator = SavedIndicator {
+        window: 0,
         kind: SavedKind::native("native.ema"),
         hidden: false,
         mouse_vertical_line: true,

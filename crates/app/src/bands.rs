@@ -91,13 +91,20 @@ pub fn carve(
             .get(i)
             .is_some_and(|slot| slot.collapsed)
     });
-    for (view, slot) in indicators.visible_panes().zip(&areas.indicator_panes) {
+    for view in indicators.all() {
+        let Some(index) = indicators.host_index_for(view.kind.as_ref(), view.ordinal) else {
+            continue;
+        };
+        let Some(slot) = areas.indicator_panes.get(index) else {
+            continue;
+        };
         let key = DrawingBand::Indicator(pane_key(view));
         let rect = egui::Rect::from_min_max(
             egui::pos2(price.rect.left(), slot.rect.top()),
             egui::pos2(price.rect.right(), slot.rect.bottom()),
         );
         let range = view.last_auto.map(|auto| view.scale.resolve(auto));
+        let zero_from_top = indicators.shared_zero_for(view.slot);
         // A band that cannot honestly place an anchor says so before the
         // press, through the cursor — never by swallowing a click. The rule
         // is the one an operator's call reads, so neither draws where the
@@ -107,9 +114,14 @@ pub fn carve(
         out.push(Band {
             key,
             rect: px_rect(rect),
-            scale: range
-                .filter(|_| !slot.collapsed)
-                .map(|(lo, hi)| PriceScale::from_range(lo, hi, rect.top(), rect.bottom())),
+            scale: range.filter(|_| !slot.collapsed).map(|(lo, hi)| {
+                let scale = PriceScale::from_range(lo, hi, rect.top(), rect.bottom());
+                zero_from_top.map_or(scale, |frac| {
+                    scale
+                        .with_align_at(quantick_chart::indicator_views::align_value(view))
+                        .with_shared_zero(frac)
+                })
+            }),
             label: view.label_shared(),
             refusal,
         });

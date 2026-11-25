@@ -159,6 +159,23 @@ pub struct SavedPlotStyle {
     /// finer than a stroke width anyone can see and survives the trip exactly.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub width: Option<f64>,
+    /// Stroke pattern. Absent is a solid line, which is what every plot drew
+    /// before this field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line: Option<SavedLineKind>,
+}
+
+/// A line plot's stroke, as the settings file spells it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SavedLineKind {
+    /// One continuous stroke.
+    #[default]
+    Solid,
+    /// Long dashes.
+    Dashed,
+    /// Short dashes.
+    Dotted,
 }
 
 /// One persisted indicator, in display order.
@@ -184,4 +201,12 @@ pub struct SavedIndicator {
     /// always did.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub plot_styles: Vec<SavedPlotStyle>,
+    /// Shared window. `0` is a window of this indicator's own. Equal ids draw
+    /// in one pane. Old files have no field and load as `0`.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub window: u32,
+}
+
+fn is_zero(value: &u32) -> bool {
+    *value == 0
 }

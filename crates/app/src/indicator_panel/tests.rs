@@ -62,6 +62,9 @@ fn draw(
                             quantick_ui_model::indicator_settings::Change::Style(_) => {
                                 SettingsOutcome::StyleChanged
                             }
+                            quantick_ui_model::indicator_settings::Change::Window { .. } => {
+                                SettingsOutcome::Open
+                            }
                         };
                     }
                 }
@@ -74,7 +77,7 @@ fn draw(
                 label,
                 has_style: !plots.is_empty(),
             });
-            let intent = super::draw(ctx, session, specs, plots, style, presets);
+            let intent = super::draw(ctx, session, specs, plots, style, presets, None);
             session.update(intent);
         },
     );
@@ -274,6 +277,105 @@ fn escape_closes_the_dialog() {
         );
     });
     assert!(closed, "Escape is the way out");
+}
+
+/// A reading number shares the line with its checkboxes. The period stays on
+/// the next line, under the same indent. A named section still takes a header
+/// row of its own.
+#[test]
+fn a_numbered_reading_puts_show_and_bars_on_one_line() {
+    let ctx = egui::Context::default();
+    let specs = [
+        bool_spec("1: show"),
+        int_spec_titled("1: length"),
+        bool_spec("1: bars"),
+        bool_spec("2: show"),
+        bool_spec("2: bars"),
+        bool_spec("1 Force: paint force bars"),
+    ];
+    let mut dialog = editor(
+        4,
+        "Force Index",
+        vec![
+            InputValue::Bool(true),
+            InputValue::Int(13),
+            InputValue::Bool(false),
+            InputValue::Bool(false),
+            InputValue::Bool(false),
+            InputValue::Bool(true),
+        ],
+    );
+    let mut style = StyleOverride::default();
+    let mut rows = Vec::new();
+    for _ in 0..2 {
+        let output = ctx.run(egui::RawInput::default(), |ctx| {
+            draw(ctx, &mut dialog, &specs, &[], &mut style, None);
+        });
+        rows.clear();
+        for shape in output.shapes {
+            if let egui::epaint::Shape::Text(text) = shape.shape {
+                rows.push((text.galley.text().to_string(), text.pos.y));
+            }
+        }
+    }
+    let y = |name: &str| -> f32 {
+        rows.iter()
+            .find(|(text, _)| text == name)
+            .unwrap_or_else(|| panic!("{name} missing in {rows:?}"))
+            .1
+    };
+    let show = rows
+        .iter()
+        .filter(|(text, _)| text == "show")
+        .map(|(_, y)| *y)
+        .collect::<Vec<_>>();
+    let bars = rows
+        .iter()
+        .filter(|(text, _)| text == "bars")
+        .map(|(_, y)| *y)
+        .collect::<Vec<_>>();
+    assert_eq!(show.len(), 2, "{rows:?}");
+    assert_eq!(bars.len(), 2, "{rows:?}");
+    assert!(
+        (y("1") - show[0]).abs() < 2.0 && (show[0] - bars[0]).abs() < 2.0,
+        "the number, show and bars share a line: {rows:?}"
+    );
+    assert!(
+        y("length") > show[0] + 4.0,
+        "length keeps the line under the toggles: {rows:?}"
+    );
+    assert!(
+        (y("2") - show[1]).abs() < 2.0 && (show[1] - bars[1]).abs() < 2.0,
+        "the second reading does the same: {rows:?}"
+    );
+    assert!(
+        show[1] > y("length"),
+        "the next reading starts after the first period: {rows:?}"
+    );
+    assert!(
+        y("1 Force") + 4.0 < y("paint force bars"),
+        "a named section keeps its header row: {rows:?}"
+    );
+}
+
+fn bool_spec(title: &str) -> InputSpec {
+    InputSpec::Bool {
+        name: title.to_owned(),
+        title: title.to_owned(),
+        default: false,
+    }
+}
+
+fn int_spec_titled(title: &str) -> InputSpec {
+    InputSpec::Int {
+        name: title.to_owned(),
+        title: title.to_owned(),
+        default: 13,
+        min: Some(1),
+        max: Some(500),
+        step: None,
+        options: Vec::new(),
+    }
 }
 
 fn int_spec() -> InputSpec {

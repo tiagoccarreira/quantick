@@ -42,6 +42,14 @@ pub struct PriceScale {
     top: f32,
     bottom: f32,
     inverted: bool,
+    /// When set, [`Self::align_at`] maps to this fraction of the pane (`0` at
+    /// the top edge, `1` at the bottom) and each side of that value scales on
+    /// its own. Indicators that share a window use one fraction, so each
+    /// one's anchor is one line while each keeps its own magnitude.
+    zero_from_top: Option<f32>,
+    /// The value that sits on the shared line. `0` for a series that crosses
+    /// zero. A bounded oscillator uses the middle of its limits instead.
+    align_at: f64,
 }
 
 impl PriceScale {
@@ -94,6 +102,8 @@ impl PriceScale {
             top,
             bottom,
             inverted: false,
+            zero_from_top: None,
+            align_at: 0.0,
         })
     }
 
@@ -114,7 +124,25 @@ impl PriceScale {
             top,
             bottom,
             inverted: false,
+            zero_from_top: None,
+            align_at: 0.0,
         }
+    }
+
+    /// The value that sits on the shared line. `0` unless the indicator names
+    /// a different anchor, such as the middle of an upper and a lower limit.
+    #[must_use]
+    pub fn with_align_at(mut self, value: f64) -> Self {
+        self.align_at = value;
+        self
+    }
+
+    /// Pin [`Self::align_at`] to one fraction of the pane, shared with the other
+    /// indicators in the window. `0` is the top edge and `1` is the bottom.
+    #[must_use]
+    pub fn with_shared_zero(mut self, from_top: f32) -> Self {
+        self.zero_from_top = Some(from_top.clamp(0.0, 1.0));
+        self
     }
 
     /// The same scale turned upside down when `inverted`: `lo` maps to `top`
@@ -155,6 +183,9 @@ impl PriceScale {
     /// The y-pixel for `price`.
     #[must_use]
     pub fn y(&self, price: f64) -> f32 {
+        if let Some(frac) = self.zero_from_top {
+            return self.y_from_shared_zero(price, frac);
+        }
         let span = self.hi - self.lo;
         if span.abs() < f64::EPSILON {
             return f32::midpoint(self.top, self.bottom);
@@ -186,6 +217,9 @@ impl PriceScale {
     /// crosshair readout.
     #[must_use]
     pub fn price_at(&self, y: f32) -> f64 {
+        if let Some(frac) = self.zero_from_top {
+            return self.price_at_shared_zero(y, frac);
+        }
         let height = self.bottom - self.top;
         if height.abs() < f32::EPSILON {
             return f64::midpoint(self.lo, self.hi);
@@ -203,6 +237,92 @@ impl PriceScale {
     pub fn range(&self) -> (f64, f64) {
         (self.lo, self.hi)
     }
+
+    /// The range the axis should label. A shared zero drops a side the series
+    /// never reaches, so a 0–100 oscillator does not grow a negative scale.
+    #[must_use]
+    pub fn label_span(&self) -> (f64, f64) {
+        if self.zero_from_top.is_none() {
+            return (self.lo, self.hi);
+        }
+        let (neg, pos) = zero_side_anchors(self.lo - self.align_at, self.hi - self.align_at);
+        let lo = if neg > 0.0 {
+            self.align_at - neg
+        } else {
+            self.align_at
+        };
+        let hi = if pos > 0.0 {
+            self.align_at + pos
+        } else {
+            self.align_at
+        };
+        if hi > lo {
+            (lo, hi)
+        } else {
+            (self.lo, self.hi)
+        }
+    }
+
+    fn y_from_shared_zero(&self, price: f64, frac: f32) -> f32 {
+        let zero_y = self.top + frac * (self.bottom - self.top);
+        let (neg, pos) = zero_side_anchors(self.lo - self.align_at, self.hi - self.align_at);
+        let shifted = price - self.align_at;
+        if shifted >= 0.0 {
+            if pos < f64::EPSILON {
+                return zero_y;
+            }
+            let far = if self.inverted { self.bottom } else { self.top };
+            return zero_y + (shifted / pos) as f32 * (far - zero_y);
+        }
+        if neg < f64::EPSILON {
+            return zero_y;
+        }
+        let far = if self.inverted { self.top } else { self.bottom };
+        zero_y + (-shifted / neg) as f32 * (far - zero_y)
+    }
+
+    fn price_at_shared_zero(&self, y: f32, frac: f32) -> f64 {
+        let zero_y = self.top + frac * (self.bottom - self.top);
+        let (neg, pos) = zero_side_anchors(self.lo - self.align_at, self.hi - self.align_at);
+        let positive_side = if self.inverted {
+            y >= zero_y
+        } else {
+            y <= zero_y
+        };
+        if positive_side {
+            let far = if self.inverted { self.bottom } else { self.top };
+            let span = zero_y - far;
+            if span.abs() < f32::EPSILON || pos < f64::EPSILON {
+                return self.align_at;
+            }
+            self.align_at + f64::from((zero_y - y) / span) * pos
+        } else {
+            let far = if self.inverted { self.top } else { self.bottom };
+            let span = far - zero_y;
+            if span.abs() < f32::EPSILON || neg < f64::EPSILON {
+                return self.align_at;
+            }
+            self.align_at - f64::from((y - zero_y) / span) * neg
+        }
+    }
+}
+
+/// How far past zero still counts as the pane's padding, not a real side.
+///
+/// The auto range pads 8% of the raw span. A series that only touches zero
+/// is about 7% of its padded span past zero. Past 9%, the side is real.
+const ZERO_SIDE_SLACK: f64 = 0.09;
+
+/// Magnitudes on each side of zero. A side the series does not reach is `0`.
+pub fn zero_side_anchors(lo: f64, hi: f64) -> (f64, f64) {
+    let span = (hi - lo).abs().max(f64::EPSILON);
+    let neg = if lo < -ZERO_SIDE_SLACK * span {
+        -lo
+    } else {
+        0.0
+    };
+    let pos = if hi > ZERO_SIDE_SLACK * span { hi } else { 0.0 };
+    (neg, pos)
 }
 
 /// The price window to draw a frame with, given what is in view.
@@ -775,6 +895,45 @@ mod tests {
     use rust_decimal::Decimal;
     use std::str::FromStr as _;
 
+    #[test]
+    fn indicators_that_share_a_zero_land_on_one_pixel() {
+        let rsi = PriceScale::from_range(-8.0, 108.0, 0.0, 200.0).with_shared_zero(0.5);
+        let macd = PriceScale::from_range(-2.4, 3.4, 0.0, 200.0).with_shared_zero(0.5);
+        assert!((rsi.y(0.0) - 100.0).abs() < 0.1, "zero is the middle");
+        assert!(
+            (rsi.y(0.0) - macd.y(0.0)).abs() < 0.1,
+            "two scales, one zero line"
+        );
+        assert!(rsi.y(100.0) < rsi.y(0.0), "the high sits above zero");
+        assert!(macd.y(-2.0) > macd.y(0.0), "the low sits below zero");
+        assert!(
+            (macd.price_at(macd.y(-1.0)) + 1.0).abs() < 1e-2,
+            "the pixel maps back to the value"
+        );
+        let (lo, hi) = rsi.label_span();
+        assert!(lo >= 0.0 && hi > 0.0, "padding below zero is not an axis");
+    }
+
+    #[test]
+    fn the_middle_of_a_bounded_scale_lands_on_the_shared_zero() {
+        let rsi = PriceScale::from_range(20.0, 100.0, 0.0, 200.0)
+            .with_align_at(50.0)
+            .with_shared_zero(0.5);
+        let macd = PriceScale::from_range(-2.4, 3.4, 0.0, 200.0).with_shared_zero(0.5);
+        assert!(
+            (rsi.y(50.0) - macd.y(0.0)).abs() < 0.1,
+            "the middle of 30 and 70 is the other indicator's zero"
+        );
+        assert!((rsi.y(100.0) - 0.0).abs() < 0.1, "the high is the top");
+        assert!((rsi.y(20.0) - 200.0).abs() < 0.1, "the low is the bottom");
+        assert!(
+            (rsi.price_at(rsi.y(70.0)) - 70.0).abs() < 0.2,
+            "a pixel reads back as the oscillator's own value"
+        );
+        let (lo, hi) = rsi.label_span();
+        assert!((lo - 20.0).abs() < 1e-6 && (hi - 100.0).abs() < 1e-6);
+    }
+
     /// The legend's value cell speaks the axis' own abbreviations, and a
     /// missing value is a blank, never a `NaN`.
     #[test]
@@ -1203,6 +1362,8 @@ mod tests {
             top: f32::NAN,
             bottom: f32::INFINITY,
             inverted: false,
+            zero_from_top: None,
+            align_at: 0.0,
         };
         let geometry = candle_geometry(
             &invalid_scale,

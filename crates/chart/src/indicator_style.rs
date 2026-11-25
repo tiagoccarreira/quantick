@@ -24,6 +24,42 @@ pub const MIN_PLOT_WIDTH_PX: f32 = 0.5;
 /// a band — and hides the candles it is drawn over.
 pub const MAX_PLOT_WIDTH_PX: f32 = 8.0;
 
+/// How a line plot is stroked. Bars, columns and markers ignore it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LineKind {
+    /// One continuous stroke.
+    #[default]
+    Solid,
+    /// Long dashes.
+    Dashed,
+    /// Short dashes, read as dots.
+    Dotted,
+}
+
+impl LineKind {
+    /// The Style-tab label.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Solid => "Solid",
+            Self::Dashed => "Dashed",
+            Self::Dotted => "Dotted",
+        }
+    }
+
+    /// Dash and gap in pixels, scaled so a thick stroke still reads as broken.
+    /// `None` is a solid line.
+    #[must_use]
+    pub fn pattern(self, width: f32) -> Option<(f32, f32)> {
+        let width = width.max(1.0);
+        match self {
+            Self::Solid => None,
+            Self::Dashed => Some((width * 4.0, width * 2.5)),
+            Self::Dotted => Some((width, width * 2.0)),
+        }
+    }
+}
+
 /// What the trader changed about one plot. Every field `None` means "whatever
 /// the indicator declared" — the state a plot nobody touched is always in.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -35,12 +71,17 @@ pub struct PlotOverride {
     pub color: Option<Rgba8>,
     /// Stroke width in pixels, clamped to [`MIN_PLOT_WIDTH_PX`]..=[`MAX_PLOT_WIDTH_PX`].
     pub width: Option<f32>,
+    /// Stroke pattern. `None` and [`LineKind::Solid`] are the declared line.
+    pub line: Option<LineKind>,
 }
 
 impl PlotOverride {
     /// Nothing was changed about this plot.
     pub fn is_default(self) -> bool {
-        self.visible.is_none() && self.color.is_none() && self.width.is_none()
+        self.visible.is_none()
+            && self.color.is_none()
+            && self.width.is_none()
+            && self.line.is_none_or(|kind| kind == LineKind::Solid)
     }
 }
 
@@ -53,6 +94,7 @@ pub struct ResolvedPlot {
     pub visible: bool,
     pub color: Rgba8,
     pub width: f32,
+    pub line: LineKind,
 }
 
 /// One indicator's style layer, indexed by plot position.
@@ -117,6 +159,7 @@ impl StyleOverride {
             width: over.width.map_or(spec.width, |px| {
                 px.clamp(MIN_PLOT_WIDTH_PX, MAX_PLOT_WIDTH_PX)
             }),
+            line: over.line.unwrap_or(LineKind::Solid),
         }
     }
 
@@ -162,6 +205,7 @@ mod tests {
         let style = StyleOverride::default();
         let resolved = style.resolve(0, &spec(), None);
         assert!(resolved.visible);
+        assert_eq!(resolved.line, LineKind::Solid);
         assert_eq!(resolved.color, spec().base_color);
         assert!((resolved.width - spec().width).abs() < f32::EPSILON);
         assert!(style.is_default());
@@ -270,5 +314,31 @@ mod tests {
         );
         style.clear();
         assert!(style.is_default() && style.plots().is_empty());
+    }
+
+    #[test]
+    fn a_broken_line_is_remembered_and_solid_is_not_an_override() {
+        let mut style = StyleOverride::default();
+        style.set(
+            0,
+            PlotOverride {
+                line: Some(LineKind::Dashed),
+                ..PlotOverride::default()
+            },
+        );
+        assert_eq!(style.resolve(0, &spec(), None).line, LineKind::Dashed);
+        assert!(LineKind::Dashed.pattern(2.0).is_some());
+        assert!(LineKind::Solid.pattern(2.0).is_none());
+        style.set(
+            0,
+            PlotOverride {
+                line: Some(LineKind::Solid),
+                ..PlotOverride::default()
+            },
+        );
+        assert!(
+            style.is_default(),
+            "solid is the line the indicator already declared"
+        );
     }
 }

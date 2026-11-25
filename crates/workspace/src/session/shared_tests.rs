@@ -15,6 +15,7 @@ use std::time::{Duration, Instant};
 
 fn entry(kind: SavedKind) -> SavedIndicator {
     SavedIndicator {
+        window: 0,
         kind,
         hidden: false,
         mouse_vertical_line: false,

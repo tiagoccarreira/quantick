@@ -17,6 +17,7 @@ pub enum SettingsSection {
     Data,
     Recording,
     AgentAccess,
+    Connections,
 }
 
 /// One row of a section.
@@ -34,11 +35,12 @@ pub enum SettingRow {
 
 impl SettingsSection {
     /// Every section, in the order the window lists them.
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 5] = [
         Self::Display,
         Self::Data,
         Self::Recording,
         Self::AgentAccess,
+        Self::Connections,
     ];
 
     /// What the window's list calls it.
@@ -49,6 +51,7 @@ impl SettingsSection {
             Self::Data => "Data",
             Self::Recording => "Recording",
             Self::AgentAccess => "Agent access",
+            Self::Connections => "Connections",
         }
     }
 
@@ -60,6 +63,7 @@ impl SettingsSection {
             Self::Data => "settings.section.data",
             Self::Recording => "settings.section.recording",
             Self::AgentAccess => "settings.section.agent_access",
+            Self::Connections => "settings.section.connections",
         }
     }
 
@@ -75,6 +79,7 @@ impl SettingsSection {
             Self::Data => &[SettingRow::ProgressiveHistory, SettingRow::VenueLeadIn],
             Self::Recording => &[SettingRow::RecordDeals],
             Self::AgentAccess => &[SettingRow::AgentSwitch, SettingRow::ManageClients],
+            Self::Connections => &[],
         }
     }
 }
@@ -151,7 +156,10 @@ mod tests {
     fn the_window_opens_on_display_and_lists_the_sections_in_order() {
         assert_eq!(SettingsSection::default(), SettingsSection::Display);
         let titles = SettingsSection::ALL.map(SettingsSection::title);
-        assert_eq!(titles, ["Display", "Data", "Recording", "Agent access"]);
+        assert_eq!(
+            titles,
+            ["Display", "Data", "Recording", "Agent access", "Connections"]
+        );
     }
 
     #[test]

@@ -4,14 +4,16 @@ use eframe::egui;
 use quantick_appearance::Builtin;
 use quantick_control_schema::settings_sections::{SettingRow, SettingsSection};
 use quantick_ui_model::UpdateSession;
-use quantick_ui_model::settings_window::{AgentNote, Control, Effects, Intent, Model, State};
+use quantick_ui_model::settings_window::{
+    AgentNote, ConnectionChoice, Control, Effects, Intent, Model, State,
+};
 
 use super::{HostEffect, SurfaceEnv, SurfaceResponse, ViewContext};
 use crate::theme::{self, choice::record};
 use crate::timezone::TzOffset;
 
-const SETTINGS_SIZE_PX: [f32; 2] = [640.0, 340.0];
-const SECTION_LIST_WIDTH_PX: f32 = 120.0;
+const SETTINGS_SIZE_PX: [f32; 2] = [680.0, 400.0];
+const SECTION_LIST_WIDTH_PX: f32 = 128.0;
 const ROW_TEXT_WIDTH_PX: f32 = 380.0;
 const ROW_GAP_PX: f32 = 8.0;
 const ROW_HINT_PX: f32 = 12.0;
@@ -73,6 +75,9 @@ fn paint_window(state: &State, ctx: &egui::Context) -> Vec<Intent> {
                     ui.strong(shown.title());
                     ui.add_space(ROW_GAP_PX);
                     egui::ScrollArea::vertical().show(ui, |ui| {
+                        if shown == SettingsSection::Connections {
+                            draw_connections(state, ui, &mut asks);
+                        }
                         for row in shown.rows() {
                             draw_row(state, ui, *row, &mut asks);
                             ui.separator();
@@ -92,6 +97,68 @@ pub(crate) fn effects(effects: Effects) -> SurfaceResponse {
         (effects != Effects::default()).then_some(HostEffect::SettingsWindow(effects));
     SurfaceResponse {
         model_effects: model_effects.into_iter().collect(),
+    }
+}
+
+/// The bridge the asset list loads, and the MCP the account asks.
+fn draw_connections(state: &State, ui: &mut egui::Ui, intent: &mut Vec<Intent>) {
+    let palette = theme::get(ui.ctx());
+    let connections = &state.facts().connections;
+    ui.label(
+        egui::RichText::new(
+            "Pick the Quantick bridge and the MCP once. The asset list then loads a symbol on that bridge.",
+        )
+        .size(ROW_HINT_PX)
+        .color(palette.text_muted()),
+    );
+    ui.add_space(ROW_GAP_PX);
+    if connections.is_empty() {
+        ui.label("No MetaTrader connection is configured.");
+        return;
+    }
+    ui.label("Quantick bridge");
+    pick(ui, "settings_bridge", &state.facts().bridge_feed, connections, |id| {
+        intent.push(Intent::PickBridge(id));
+    });
+    if let Some(chosen) = connections.iter().find(|row| row.id == state.facts().bridge_feed) {
+        ui.label(faint_line(palette.text_muted(), &chosen.bridge));
+    }
+    ui.add_space(ROW_GAP_PX);
+    ui.label("MCP");
+    pick(ui, "settings_mcp", &state.facts().mcp_feed, connections, |id| {
+        intent.push(Intent::PickMcp(id));
+    });
+    if let Some(chosen) = connections.iter().find(|row| row.id == state.facts().mcp_feed) {
+        ui.label(faint_line(palette.text_muted(), &chosen.mcp));
+    }
+}
+
+fn faint_line(color: egui::Color32, text: &str) -> egui::RichText {
+    egui::RichText::new(text).size(ROW_HINT_PX).color(color)
+}
+
+fn pick(
+    ui: &mut egui::Ui,
+    id: &str,
+    current: &str,
+    connections: &[ConnectionChoice],
+    mut chosen: impl FnMut(String),
+) {
+    let shown = connections
+        .iter()
+        .find(|row| row.id == current)
+        .map(|row| row.name.as_str())
+        .unwrap_or(current);
+    let mut next = current.to_owned();
+    egui::ComboBox::from_id_salt(id)
+        .selected_text(shown)
+        .show_ui(ui, |ui| {
+            for row in connections {
+                ui.selectable_value(&mut next, row.id.clone(), &row.name);
+            }
+        });
+    if next != current {
+        chosen(next);
     }
 }
 

@@ -18,8 +18,9 @@ use crate::chart::PriceScale;
 use crate::indicators::IndicatorView;
 use crate::theme;
 use crate::viewport::Viewport;
-pub(crate) use quantick_chart::indicator_views::pane_auto_range;
-use quantick_chart::indicator_views::{COLUMNS_WIDTH_FRAC, format_value, last_value};
+use quantick_chart::indicator_style::LineKind;
+use quantick_chart::indicator_views::{COLUMNS_WIDTH_FRAC, align_value, heading_bits};
+pub(crate) use quantick_chart::indicator_views::{centres_scale, pane_auto_range};
 
 /// Marker radius for [`PlotStyle::Circles`] / arm length for
 /// [`PlotStyle::Cross`], in pixels.
@@ -30,6 +31,8 @@ const HISTOGRAM_WIDTH_FRAC: f32 = 0.3;
 const AREA_FILL_ALPHA: u8 = 48;
 /// Pane label font size, in pixels.
 const PANE_LABEL_FONT_PX: f32 = 11.0;
+/// Gap between two series on the title line, in pixels.
+const HEADING_GAP_PX: f32 = 14.0;
 /// Opacity of the hairline that separates a pane from what sits above it.
 const PANE_FRAME_ALPHA: f32 = 0.4;
 /// Opacity of the zero line that anchors a flow pane.
@@ -271,6 +274,9 @@ pub(crate) fn draw_pane(
     start: usize,
     end: usize,
     partial_slot: Option<usize>,
+    chrome: bool,
+    heading_row: usize,
+    zero_from_top: Option<f32>,
 ) {
     let palette = theme::get(painter.ctx());
     let pane = frame.rect;
@@ -282,56 +288,71 @@ pub(crate) fn draw_pane(
         .lane
         .as_ref()
         .map_or(pane, |lane| pane.union(lane.rect));
-    painter.rect_filled(band, egui::Rounding::ZERO, frame.background);
-    painter.line_segment(
-        [band.left_top(), band.right_top()],
-        Stroke::new(
-            PANE_RULE_WIDTH_PX,
-            palette.text_muted().gamma_multiply(PANE_FRAME_ALPHA),
-        ),
-    );
-    // The rule that closes the pane's right edge is drawn whatever the pane
-    // has to say: the gutter is one column down the whole chart, and a gap in
-    // it at the height of a warming-up pane reads as a broken axis.
-    painter.line_segment(
-        [
-            pos2(frame.gutter.left(), pane.top()),
-            pos2(frame.gutter.left(), pane.bottom()),
-        ],
-        Stroke::new(PANE_RULE_WIDTH_PX, frame.grid),
-    );
-
-    if frame.collapsed {
-        draw_collapsed_pane(painter, band, view);
+    if chrome {
+        painter.rect_filled(band, egui::Rounding::ZERO, frame.background);
+        painter.line_segment(
+            [band.left_top(), band.right_top()],
+            Stroke::new(
+                PANE_RULE_WIDTH_PX,
+                palette.text_muted().gamma_multiply(PANE_FRAME_ALPHA),
+            ),
+        );
+        // The rule that closes the pane's right edge is drawn whatever the pane
+        // has to say: the gutter is one column down the whole chart, and a gap in
+        // it at the height of a warming-up pane reads as a broken axis.
+        painter.line_segment(
+            [
+                pos2(frame.gutter.left(), pane.top()),
+                pos2(frame.gutter.left(), pane.bottom()),
+            ],
+            Stroke::new(PANE_RULE_WIDTH_PX, frame.grid),
+        );
+        if frame.collapsed {
+            draw_collapsed_pane(painter, band, view);
+            return;
+        }
+    } else if frame.collapsed {
         return;
     }
 
     let Some((lo, hi)) = range else {
-        painter.text(
-            band.center(),
-            egui::Align2::CENTER_CENTER,
-            format!("{} — warming up", view.label()),
-            palette.label_font(PANE_LABEL_FONT_PX),
-            palette.text_muted(),
-        );
+        if chrome {
+            painter.text(
+                band.center(),
+                egui::Align2::CENTER_CENTER,
+                format!("{} — warming up", view.label()),
+                palette.label_font(PANE_LABEL_FONT_PX),
+                palette.text_muted(),
+            );
+        }
         return;
     };
-    let scale = PriceScale::from_range(lo, hi, pane.top(), pane.bottom());
+    let mut scale = PriceScale::from_range(lo, hi, pane.top(), pane.bottom());
+    if let Some(frac) = zero_from_top {
+        scale = scale
+            .with_align_at(align_value(view))
+            .with_shared_zero(frac);
+    }
 
     let clipped = painter.with_clip_rect(band);
-    // The axis first, so its grid sits behind the plots rather than over them
-    // — the price axis' own paint order.
-    draw_pane_axis(painter, &clipped, frame, &scale, band);
-    // A zero line anchors flow panes (cvd, delta) visually.
-    if lo < 0.0 && hi > 0.0 {
-        let y = scale.y(0.0);
-        clipped.line_segment(
-            [pos2(band.left(), y), pos2(band.right(), y)],
-            Stroke::new(
-                PANE_RULE_WIDTH_PX,
-                palette.text_muted().gamma_multiply(ZERO_LINE_ALPHA),
-            ),
-        );
+    if chrome {
+        // The axis first, so its grid sits behind the plots rather than over them
+        // — the price axis' own paint order.
+        draw_pane_axis(painter, &clipped, frame, &scale, band);
+        // One line for the window, at the shared fraction. An oscillator whose
+        // anchor is not 0 still meets it: its scale pins that anchor here.
+        if let Some(frac) = zero_from_top {
+            let zero_y = pane.top() + frac * (pane.bottom() - pane.top());
+            if zero_y > pane.top() + 1.0 && zero_y < pane.bottom() - 1.0 {
+                clipped.line_segment(
+                    [pos2(band.left(), zero_y), pos2(band.right(), zero_y)],
+                    Stroke::new(
+                        PANE_RULE_WIDTH_PX,
+                        palette.text_muted().gamma_multiply(ZERO_LINE_ALPHA),
+                    ),
+                );
+            }
+        }
     }
 
     let pane_extents = |_slot: usize| {
@@ -362,61 +383,94 @@ pub(crate) fn draw_pane(
         end,
     );
 
-    draw_pane_heading(painter, band, view, false);
+    draw_pane_heading(painter, band, view, false, heading_row);
 }
 
 fn draw_collapsed_pane(painter: &egui::Painter, band: Rect, view: &IndicatorView) {
-    draw_pane_heading(painter, band, view, true);
+    draw_pane_heading(painter, band, view, true, 0);
 }
 
-fn draw_pane_heading(painter: &egui::Painter, band: Rect, view: &IndicatorView, collapsed: bool) {
+fn draw_pane_heading(
+    painter: &egui::Painter,
+    band: Rect,
+    view: &IndicatorView,
+    collapsed: bool,
+    heading_row: usize,
+) {
     let palette = theme::get(painter.ctx());
     let painter = painter.with_clip_rect(band);
-    let value = last_value(view).map(format_value).unwrap_or_default();
-    let font = palette.axis_font(PANE_LABEL_FONT_PX);
-    let value_width = painter
-        .layout_no_wrap(value.clone(), font.clone(), palette.text_muted())
-        .size()
-        .x
-        .min(band.width() * 0.5);
+    let font = palette.label_font(PANE_LABEL_FONT_PX);
     let y = if collapsed {
         band.center().y
     } else {
-        band.top() + PANE_LABEL_INSET_PX.y
+        band.top() + PANE_LABEL_INSET_PX.y + heading_row as f32 * (PANE_LABEL_FONT_PX + 3.0)
     };
-    let left = if collapsed {
+    let align = if collapsed {
         egui::Align2::LEFT_CENTER
     } else {
         egui::Align2::LEFT_TOP
-    };
-    let right = if collapsed {
-        egui::Align2::RIGHT_CENTER
-    } else {
-        egui::Align2::RIGHT_TOP
     };
     let chevron = if collapsed {
         COLLAPSED_CHEVRON
     } else {
         EXPANDED_CHEVRON
     };
+    let right_limit = band.right() - PANE_LABEL_INSET_PX.x;
+    let mut x = band.left() + PANE_LABEL_INSET_PX.x;
+    let chevron_width = painter
+        .layout_no_wrap(chevron.to_owned(), font.clone(), palette.text_muted())
+        .size()
+        .x;
     theme::text_fitted(
         &painter,
-        pos2(band.left() + PANE_LABEL_INSET_PX.x, y),
-        left,
-        format!("{chevron} {}", view.label()),
-        palette.label_font(PANE_LABEL_FONT_PX),
+        pos2(x, y),
+        align,
+        chevron,
+        font.clone(),
         palette.text_muted(),
-        band.width() - value_width - 3.0 * PANE_LABEL_INSET_PX.x,
+        chevron_width + 2.0,
     );
-    theme::text_fitted(
-        &painter,
-        pos2(band.right() - PANE_LABEL_INSET_PX.x, y),
-        right,
-        value,
-        font,
-        palette.text_muted(),
-        value_width,
-    );
+    x += chevron_width + 4.0;
+    let bits = heading_bits(view);
+    if bits.is_empty() {
+        theme::text_fitted(
+            &painter,
+            pos2(x, y),
+            align,
+            view.label(),
+            font,
+            palette.text_muted(),
+            (right_limit - x).max(0.0),
+        );
+        return;
+    }
+    for (index, bit) in bits.iter().enumerate() {
+        if index > 0 {
+            x += HEADING_GAP_PX;
+        }
+        let room = right_limit - x;
+        if room < 8.0 {
+            break;
+        }
+        let color = color32(bit.color);
+        let natural = painter
+            .layout_no_wrap(bit.text.clone(), font.clone(), color)
+            .size()
+            .x;
+        theme::text_fitted(
+            &painter,
+            pos2(x, y),
+            align,
+            bit.text.clone(),
+            font.clone(),
+            color,
+            natural.min(room),
+        );
+        x += natural;
+        if natural > room {
+            break;
+        }
+    }
 }
 
 /// A pane's line-shaped plots across the live lane: the committed steps of
@@ -462,7 +516,7 @@ fn draw_lane_plots(
         let mut held: Option<f32> = None;
         for &(close_ms, row) in lane.steps {
             let Some(value) = column.get(row).copied().filter(|v| !v.is_nan()) else {
-                flush_segment(painter, &mut segment, stroke);
+                flush_segment(painter, &mut segment, stroke, resolved.line);
                 held = None;
                 continue;
             };
@@ -478,7 +532,7 @@ fn draw_lane_plots(
         let mut first_rung = true;
         for sample in &view.lane {
             let Some(value) = sample.values.get(index).copied().filter(|v| !v.is_nan()) else {
-                flush_segment(painter, &mut segment, stroke);
+                flush_segment(painter, &mut segment, stroke, resolved.line);
                 held = None;
                 first_rung = false;
                 continue;
@@ -498,7 +552,7 @@ fn draw_lane_plots(
         if let Some(previous) = held {
             segment.push(pos2(lane.rect.right(), previous));
         }
-        flush_segment(painter, &mut segment, stroke);
+        flush_segment(painter, &mut segment, stroke, resolved.line);
     }
 }
 
@@ -516,7 +570,7 @@ fn draw_pane_axis(
 ) {
     let palette = theme::axes(painter.ctx());
     let pane = frame.rect;
-    let (lo, hi) = scale.range();
+    let (lo, hi) = scale.label_span();
     let font = palette.axis_font(crate::chart::AXIS_LABEL_FONT_PX);
     for (tick, label) in crate::chart::axis_labels(lo, hi, pane.height()) {
         let y = scale.y(tick);
@@ -594,8 +648,10 @@ fn draw_view_plots(
             continue;
         }
         match spec.style {
-            PlotStyle::Line => draw_line(painter, &visible, x, &y_of, stroke, false),
-            PlotStyle::StepLine => draw_line(painter, &visible, x, &y_of, stroke, true),
+            PlotStyle::Line => draw_line(painter, &visible, x, &y_of, stroke, resolved.line, false),
+            PlotStyle::StepLine => {
+                draw_line(painter, &visible, x, &y_of, stroke, resolved.line, true);
+            }
             PlotStyle::Histogram => {
                 draw_bars(painter, &visible, x, &y_of, color, HISTOGRAM_WIDTH_FRAC);
             }
@@ -604,7 +660,7 @@ fn draw_view_plots(
             }
             PlotStyle::Circles => draw_markers(painter, &visible, x, &y_of, color, false),
             PlotStyle::Cross => draw_markers(painter, &visible, x, &y_of, color, true),
-            PlotStyle::Area => draw_area(painter, &visible, x, &y_of, stroke, color),
+            PlotStyle::Area => draw_area(painter, &visible, x, &y_of, stroke, resolved.line, color),
         }
     }
 }
@@ -617,12 +673,13 @@ fn draw_line(
     x: &PlotX<'_>,
     y_of: &impl Fn(f64) -> f32,
     stroke: Stroke,
+    kind: LineKind,
     stepped: bool,
 ) {
     let mut segment: Vec<Pos2> = Vec::new();
     for (row, value) in plot.cells() {
         if value.is_nan() {
-            flush_segment(painter, &mut segment, stroke);
+            flush_segment(painter, &mut segment, stroke, kind);
             continue;
         }
         let point = pos2(x.x(row), y_of(value));
@@ -631,21 +688,32 @@ fn draw_line(
         }
         segment.push(point);
     }
-    flush_segment(painter, &mut segment, stroke);
+    flush_segment(painter, &mut segment, stroke, kind);
 }
 
-fn flush_segment(painter: &egui::Painter, segment: &mut Vec<Pos2>, stroke: Stroke) {
+fn flush_segment(painter: &egui::Painter, segment: &mut Vec<Pos2>, stroke: Stroke, kind: LineKind) {
     match segment.len() {
         0 => {}
         // A lone point still marks the bar (a 1-bar segment between gaps).
         1 => {
             painter.circle_filled(segment[0], stroke.width.max(1.0), stroke.color);
         }
-        _ => {
-            painter.add(Shape::line(std::mem::take(segment), stroke));
-        }
+        _ => paint_stroke(painter, std::mem::take(segment), stroke, kind),
     }
     segment.clear();
+}
+
+fn paint_stroke(painter: &egui::Painter, points: Vec<Pos2>, stroke: Stroke, kind: LineKind) {
+    match kind.pattern(stroke.width) {
+        None => {
+            painter.add(Shape::line(points, stroke));
+        }
+        Some((dash, gap)) => {
+            for shape in Shape::dashed_line(&points, stroke, dash, gap) {
+                painter.add(shape);
+            }
+        }
+    }
 }
 
 /// Append one axis-aligned quad to `mesh`.
@@ -741,6 +809,7 @@ fn draw_area(
     x: &PlotX<'_>,
     y_of: &impl Fn(f64) -> f32,
     stroke: Stroke,
+    kind: LineKind,
     color: Color32,
 ) {
     let fill = Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), AREA_FILL_ALPHA);
@@ -768,7 +837,7 @@ fn draw_area(
             painter.add(Shape::mesh(mesh));
         }
         if segment.len() >= 2 {
-            painter.add(Shape::line(std::mem::take(segment), stroke));
+            paint_stroke(painter, std::mem::take(segment), stroke, kind);
         } else {
             segment.clear();
         }

@@ -138,6 +138,7 @@ fn seeded(session: &mut LayoutSession, pane: u64) {
 
 fn ema() -> crate::indicator_document::SavedIndicator {
     crate::indicator_document::SavedIndicator {
+        window: 0,
         kind: crate::indicator_document::SavedKind::native("native.ema"),
         hidden: false,
         mouse_vertical_line: false,
@@ -292,6 +293,7 @@ fn a_pane_back_from_a_switch_finds_its_tabs_one_copy() {
 
 fn script(name: &str) -> crate::indicator_document::SavedIndicator {
     crate::indicator_document::SavedIndicator {
+        window: 0,
         kind: crate::indicator_document::SavedKind::Script {
             name: name.to_owned(),
         },
@@ -301,6 +303,7 @@ fn script(name: &str) -> crate::indicator_document::SavedIndicator {
 
 fn native(id: &str) -> crate::indicator_document::SavedIndicator {
     crate::indicator_document::SavedIndicator {
+        window: 0,
         kind: crate::indicator_document::SavedKind::native(id),
         ..ema()
     }

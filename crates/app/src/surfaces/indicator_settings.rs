@@ -54,6 +54,7 @@ impl super::View<Model> for View {
             &plots,
             &mut view.style,
             names.as_deref(),
+            env.mates.as_deref(),
         );
         PresetEditor {
             target: env.target,

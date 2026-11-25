@@ -167,6 +167,7 @@ mod tests {
 
     fn ema() -> SavedIndicator {
         SavedIndicator {
+            window: 0,
             kind: SavedKind::native("native.ema"),
             hidden: false,
             mouse_vertical_line: false,

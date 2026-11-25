@@ -26,6 +26,8 @@ pub enum LayoutEdit {
     Styles(Vec<SavedPlotStyle>),
     /// The per-indicator mouse guide.
     MouseVerticalLine(bool),
+    /// Shared window. `0` is a window of this indicator's own.
+    Window(u32),
 }
 
 /// One pane an edit may reach: its address, the layout it shows, and its
@@ -101,6 +103,7 @@ fn record(entries: &mut Vec<SavedIndicator>, index: usize, edit: LayoutEdit) {
             mouse_vertical_line: false,
             inputs: Vec::new(),
             plot_styles: Vec::new(),
+            window: 0,
         };
         entries.insert(index.min(entries.len()), entry);
         return;
@@ -119,6 +122,7 @@ fn record(entries: &mut Vec<SavedIndicator>, index: usize, edit: LayoutEdit) {
         LayoutEdit::Inputs(inputs) => entry.inputs = inputs,
         LayoutEdit::Styles(styles) => entry.plot_styles = styles,
         LayoutEdit::MouseVerticalLine(enabled) => entry.mouse_vertical_line = enabled,
+        LayoutEdit::Window(window) => entry.window = window,
         LayoutEdit::Add(_) | LayoutEdit::Remove => {}
     }
 }
@@ -157,6 +161,8 @@ pub struct Materialise<'a, V> {
     pub mouse_vertical_line: bool,
     /// The style layer to queue; `None` for an indicator nobody styled.
     pub plot_styles: Option<&'a [SavedPlotStyle]>,
+    /// Shared window. `0` is a window of this indicator's own.
+    pub window: u32,
 }
 
 /// The saved set, entry by entry, as a fresh pane puts it on: `read` turns a
@@ -172,6 +178,7 @@ pub fn materialise<'a, V>(
             hidden: entry.hidden,
             mouse_vertical_line: entry.mouse_vertical_line,
             plot_styles: (!entry.plot_styles.is_empty()).then_some(entry.plot_styles.as_slice()),
+            window: entry.window,
         })
         .collect()
 }

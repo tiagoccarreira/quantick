@@ -46,9 +46,9 @@ impl MarketPalette {
             return (!background).then(|| self.submit_switch(listing)).flatten();
         }
         self.refusal = None;
-        let row = self.selected_row(listing)?;
+        let row = self.project(self.selected_row(listing)?);
         let bar = self.bar(listing);
-        let action = primary_action(row, &bar, &self.workspace)?;
+        let action = primary_action(&row, &bar, &self.workspace)?;
         let choice = OpenChoice {
             feed_id: row.feed_id.clone(),
             symbol: row.symbol.clone(),
@@ -74,8 +74,8 @@ impl MarketPalette {
     fn submit_switch(&mut self, listing: &MarketListing) -> Option<PaletteIntent> {
         self.refusal = None;
         let target = self.switching.as_ref()?;
-        let row = self.selected_row(listing)?;
-        let action = switch_action(row)?;
+        let row = self.project(self.selected_row(listing)?);
+        let action = switch_action(&row)?;
         if let PrimaryAction::Roll { .. } = action {
             return Some(PaletteIntent::Roll {
                 tab_id: target.tab_id,
@@ -97,7 +97,7 @@ impl MarketPalette {
     /// shows) is refused where the trader can read why, not ignored.
     #[must_use]
     pub fn remove_selected(&self, listing: &MarketListing) -> Option<PaletteIntent> {
-        let row = self.selected_row(listing)?;
+        let row = self.project(self.selected_row(listing)?);
         let listed = row.kind == VenueKind::Live
             && !matches!(row.status, MarketStatus::Add | MarketStatus::Roll { .. });
         listed.then(|| PaletteIntent::Remove {

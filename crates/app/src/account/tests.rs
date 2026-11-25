@@ -7,8 +7,9 @@ use super::venue::{AccountInfo, tool_refusal};
 use super::{
     AccountMode, ExecutionTarget, OpenTicket, PendingAction, PositionSnapshot, TradeBlock,
     VenueTicket, allowed_command, badge_lines, close_command, parse_account_info, parse_positions,
-    resolve_token, trade_block,
+    resolve_token, target_for, trade_block,
 };
+use crate::config::{FeedMcp, MetaTraderSettings};
 use quantick_engine::Side;
 use rust_decimal::Decimal;
 use serde_json::json;
@@ -115,6 +116,37 @@ fn an_empty_mcp_url_keeps_the_overlay_dark() {
         ..crate::config::MetaTraderSettings::default()
     };
     assert!(resolve_token(&settings).is_none());
+}
+
+#[test]
+fn each_connection_keeps_its_own_mcp() {
+    let mut settings = MetaTraderSettings {
+        mcp_url: "http://127.0.0.1:22346/mcp".into(),
+        mcp_token: "mac".into(),
+        ..MetaTraderSettings::default()
+    };
+    settings.mcp.insert(
+        "metatrader-server".into(),
+        FeedMcp {
+            url: "http://193.202.85.32:22346/mcp".into(),
+            token: "vps".into(),
+        },
+    );
+    let vps = target_for(&settings, "metatrader-server").expect("vps mcp");
+    assert_eq!(vps.url, "http://193.202.85.32:22346/mcp");
+    assert_eq!(vps.token, "vps");
+    let mac = target_for(&settings, "metatrader").expect("shared mac mcp");
+    assert_eq!(mac.url, "http://127.0.0.1:22346/mcp");
+    assert_eq!(mac.token, resolve_token(&settings).unwrap());
+    assert_ne!(mac.token, vps.token);
+    settings.mcp.insert(
+        "blank".into(),
+        FeedMcp {
+            url: "http://193.202.85.32:22346/mcp".into(),
+            token: String::new(),
+        },
+    );
+    assert!(target_for(&settings, "blank").is_none());
 }
 
 fn real_account() -> AccountInfo {

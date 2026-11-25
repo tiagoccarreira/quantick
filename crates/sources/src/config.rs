@@ -510,15 +510,50 @@ pub struct MetaTraderSettings {
     /// this never has to repeat what quantick already knows. Resolved against
     /// quantick's working directory.
     pub bridge_command: Vec<String>,
-    /// Streamable HTTP endpoint of the local MetaTrader MCP
-    /// (`get_trading_open_positions`). Empty disables the account overlay.
+    /// Shared account MCP for a MetaTrader feed that has no
+    /// [`mcp`](Self::mcp) entry. Empty disables the overlay for those feeds.
     #[serde(default = "default_mcp_url")]
     pub mcp_url: String,
     /// Bearer token for [`mcp_url`](Self::mcp_url). Empty in the shipped
     /// default; set in `quantick.toml` or `QUANTICK_MT5_MCP_TOKEN`. Never
-    /// committed.
+    /// committed. A feed named in [`mcp`](Self::mcp) does not use this token.
     #[serde(default)]
     pub mcp_token: String,
+    /// One account MCP per MetaTrader feed (`[metatrader.mcp.<feed id>]`).
+    ///
+    /// A feed present here talks only to its own url and token. It does not
+    /// fall back to [`mcp_url`](Self::mcp_url), so the Mac terminal and the
+    /// VPS terminal never share an account.
+    #[serde(default)]
+    pub mcp: BTreeMap<String, FeedMcp>,
+    /// Where this Mac reaches each feed's Quantick bridge
+    /// (`[metatrader.bridge_host]`). A feed with no entry is the local
+    /// listener, [`listen_addr`](Self::listen_addr). A remote bridge names
+    /// the server the tunnel uses, such as `193.202.85.32:9100`.
+    #[serde(default)]
+    pub bridge_host: BTreeMap<String, String>,
+}
+
+/// The account MCP of one MetaTrader feed.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+pub struct FeedMcp {
+    /// Streamable HTTP endpoint. Blank, with a blank token, is refused at load.
+    #[serde(default)]
+    pub url: String,
+    /// Bearer token for [`url`](Self::url). Never committed.
+    #[serde(default)]
+    pub token: String,
+}
+
+/// Which account MCP a feed should be asked with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NamedMcp<'a> {
+    /// This feed has no entry; the shared url and token apply.
+    Shared,
+    /// This feed named an endpoint that can be asked.
+    Own { url: &'a str, token: &'a str },
+    /// This feed named an entry whose url or token is blank.
+    Dark,
 }
 
 fn default_mcp_url() -> String {
@@ -538,6 +573,8 @@ impl Default for MetaTraderSettings {
             ],
             mcp_url: "http://127.0.0.1:22346/mcp".to_string(),
             mcp_token: String::new(),
+            mcp: BTreeMap::new(),
+            bridge_host: BTreeMap::new(),
         }
     }
 }
@@ -701,6 +738,39 @@ impl MetaTraderSettings {
         }
         Ok(())
     }
+
+    /// The account MCP `feed_id` named for itself.
+    ///
+    /// [`NamedMcp::Shared`] leaves the choice to [`mcp_url`](Self::mcp_url).
+    /// [`NamedMcp::Dark`] means the entry exists and must not borrow another
+    /// feed's token.
+    #[must_use]
+    pub fn named_mcp<'a>(&'a self, feed_id: &str) -> NamedMcp<'a> {
+        let Some(entry) = self.mcp.get(feed_id) else {
+            return NamedMcp::Shared;
+        };
+        let url = entry.url.trim();
+        let token = entry.token.trim();
+        if url.is_empty() || token.is_empty() {
+            NamedMcp::Dark
+        } else {
+            NamedMcp::Own { url, token }
+        }
+    }
+
+    /// Where the Mac reaches `feed_id`'s Quantick bridge.
+    ///
+    /// A named host is the server. No entry means the bridge dials this
+    /// machine at [`listen_addr`](Self::listen_addr).
+    #[must_use]
+    pub fn bridge_host_for(&self, feed_id: &str) -> &str {
+        self.bridge_host
+            .get(feed_id)
+            .map(String::as_str)
+            .map(str::trim)
+            .filter(|host| !host.is_empty())
+            .unwrap_or(&self.listen_addr)
+    }
 }
 
 #[cfg(test)]
@@ -847,5 +917,46 @@ mod tests {
         let other = settings.endpoint_for("WIN$N");
         assert_eq!(other.listen_addr, "garbage");
         assert_eq!(other.dial, None);
+    }
+
+    #[test]
+    fn a_named_feed_keeps_its_own_mcp() {
+        let mut settings = MetaTraderSettings::default();
+        settings.mcp.insert(
+            "metatrader-server".into(),
+            FeedMcp {
+                url: "http://193.202.85.32:22346/mcp".into(),
+                token: "vps".into(),
+            },
+        );
+        assert_eq!(
+            settings.named_mcp("metatrader-server"),
+            NamedMcp::Own {
+                url: "http://193.202.85.32:22346/mcp",
+                token: "vps",
+            }
+        );
+        assert_eq!(settings.named_mcp("metatrader"), NamedMcp::Shared);
+        settings.mcp.insert(
+            "blank".into(),
+            FeedMcp {
+                url: "http://193.202.85.32:22346/mcp".into(),
+                token: "  ".into(),
+            },
+        );
+        assert_eq!(settings.named_mcp("blank"), NamedMcp::Dark);
+    }
+
+    #[test]
+    fn a_remote_bridge_names_the_server_the_mac_reaches() {
+        let mut settings = MetaTraderSettings::default();
+        settings
+            .bridge_host
+            .insert("metatrader-server".into(), "193.202.85.32:9100".into());
+        assert_eq!(
+            settings.bridge_host_for("metatrader-server"),
+            "193.202.85.32:9100"
+        );
+        assert_eq!(settings.bridge_host_for("metatrader"), "127.0.0.1:9100");
     }
 }

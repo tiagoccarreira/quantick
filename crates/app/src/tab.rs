@@ -425,8 +425,9 @@ impl Tab {
         // enable and disable themselves from this one value.
         let mut caps = *self.link.feed_capabilities.borrow();
         // The token is operator config, not a fact the feed thread can know.
-        caps.mcp_configured =
-            caps.open_positions && crate::account::resolve_token(&config.metatrader).is_some();
+        caps.mcp_configured = caps.open_positions
+            && crate::account::target_for(&config.metatrader, self.account.mcp_feed(&self.feed_id))
+                .is_some();
         caps
     }
 }

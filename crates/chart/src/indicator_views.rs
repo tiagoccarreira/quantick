@@ -21,7 +21,10 @@ mod pane_layout;
 mod pane_sizing;
 mod pane_values;
 pub use pane_layout::{MIN_CHART_HEIGHT_PX, format_value, pane_heights};
-pub use pane_values::{last_value, pane_auto_range};
+pub use pane_values::{
+    HeadingBit, align_value, centres_scale, heading_bits, last_value, pane_auto_range,
+    shared_zero_from_top,
+};
 mod view;
 mod views;
 

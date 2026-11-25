@@ -14,7 +14,8 @@ use serde::{Deserialize, Serialize};
 
 use quantick_indicators::{InputValue, Rgba8, SourceId};
 
-use quantick_chart::indicator_style::PlotOverride;
+use quantick_chart::indicator_style::{LineKind, PlotOverride};
+use quantick_workspace::indicator_document::SavedLineKind;
 
 /// The file's name inside the durable cockpit home. See [`crate::store_home`].
 pub const STATE_FILE: &str = "indicators-state.toml";
@@ -72,6 +73,11 @@ impl SavedPlotStyleExt for SavedPlotStyle {
             width: over
                 .width
                 .map(|px| (f64::from(px) * WIDTH_DECIMALS).round() / WIDTH_DECIMALS),
+            line: match over.line {
+                Some(LineKind::Dashed) => Some(SavedLineKind::Dashed),
+                Some(LineKind::Dotted) => Some(SavedLineKind::Dotted),
+                Some(LineKind::Solid) | None => None,
+            },
         }
     }
 
@@ -81,6 +87,11 @@ impl SavedPlotStyleExt for SavedPlotStyle {
             color: self.color.map(|[r, g, b, a]| Rgba8::new(r, g, b, a)),
             #[allow(clippy::cast_possible_truncation)]
             width: self.width.map(|px| px as f32),
+            line: match self.line {
+                Some(SavedLineKind::Dashed) => Some(LineKind::Dashed),
+                Some(SavedLineKind::Dotted) => Some(LineKind::Dotted),
+                Some(SavedLineKind::Solid) | None => None,
+            },
         }
     }
 }
@@ -196,6 +207,7 @@ mod tests {
         let dir = crate::scratch::ScratchDir::new("volume-state");
         let path = dir.join("state.toml");
         let saved = SavedIndicator {
+            window: 0,
             kind: SavedKind::native("native.volume"),
             hidden: true,
             mouse_vertical_line: false,
@@ -204,6 +216,7 @@ mod tests {
                 visible: Some(true),
                 color: Some([7, 100, 90, 80]),
                 width: None,
+                line: None,
             }],
         };
         save(&path, &[saved]);
@@ -228,6 +241,7 @@ mod tests {
     fn sample() -> Vec<SavedIndicator> {
         vec![
             SavedIndicator {
+                window: 0,
                 kind: SavedKind::native("native.ema"),
                 hidden: false,
                 mouse_vertical_line: false,
@@ -235,6 +249,7 @@ mod tests {
                 plot_styles: Vec::new(),
             },
             SavedIndicator {
+                window: 0,
                 kind: SavedKind::Script {
                     name: "zigzag.pine".to_owned(),
                 },
@@ -245,6 +260,7 @@ mod tests {
                     visible: Some(false),
                     color: Some([1, 2, 3, 255]),
                     width: Some(2.5),
+                    line: None,
                 }],
             },
         ]
@@ -325,6 +341,7 @@ name = \"zigzag.pine\"
         save(
             &path,
             &[SavedIndicator {
+                window: 0,
                 kind: SavedKind::native("native.ema"),
                 hidden: false,
                 mouse_vertical_line: false,
@@ -418,6 +435,7 @@ id = \"native.from.the.future\"
         save(
             &path,
             &[SavedIndicator {
+                window: 0,
                 kind: SavedKind::native("native.ema"),
                 hidden: false,
                 mouse_vertical_line: false,
@@ -439,6 +457,7 @@ id = \"native.from.the.future\"
             visible: Some(false),
             color: Some(Rgba8::new(9, 8, 7, 200)),
             width: Some(3.5),
+            line: Some(LineKind::Dotted),
         };
         let saved = SavedPlotStyle::from_override(over);
         assert_eq!(saved.to_override(), over);

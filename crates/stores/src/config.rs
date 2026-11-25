@@ -34,8 +34,9 @@ use quantick_sources::history_reach;
 // produced and consumed entirely inside the feed host — and a re-export no
 // caller reads is a dead import the workspace lints reject.
 pub use quantick_sources::config::{
-    BackfillState, BrokerSettings, FeedCapabilities, HistoryBoundary, MetaTraderBrokerSettings,
-    MetaTraderSettings, Mt5SideSource, ProviderKind, TapeBackfill, split_host_port,
+    BackfillState, BrokerSettings, FeedCapabilities, FeedMcp, HistoryBoundary,
+    MetaTraderBrokerSettings, MetaTraderSettings, Mt5SideSource, NamedMcp, ProviderKind,
+    TapeBackfill, split_host_port,
 };
 
 /// The built-in default configuration, compiled into the binary so the app runs
@@ -875,6 +876,7 @@ impl AppConfig {
         }
         // Needs the catalog, so it waits until the catalog is known good.
         self.validate_ports_against_catalog()?;
+        self.validate_mcp_per_feed()?;
         let Some(default) = self.feed(&self.default_feed) else {
             return Err(format!(
                 "default_feed '{}' is not among the configured feeds",
@@ -886,6 +888,36 @@ impl AppConfig {
                 "default_symbol '{}' is not offered by feed '{}'",
                 self.default_symbol, self.default_feed
             ));
+        }
+        Ok(())
+    }
+
+    /// Each `[metatrader.mcp.<feed id>]` entry is one MetaTrader connection's
+    /// account. A key that names no such feed, or an entry missing url or
+    /// token, would otherwise talk to the wrong account or to none, silently.
+    fn validate_mcp_per_feed(&self) -> Result<(), String> {
+        for (feed_id, entry) in &self.metatrader.mcp {
+            if feed_id.trim().is_empty() || feed_id.trim() != feed_id {
+                return Err(
+                    "[metatrader.mcp] has a key that is empty or padded with whitespace"
+                        .to_string(),
+                );
+            }
+            let Some(feed) = self.feed(feed_id) else {
+                return Err(format!(
+                    "[metatrader.mcp] names '{feed_id}', which is not a configured feed"
+                ));
+            };
+            if feed.provider != ProviderKind::MetaTrader {
+                return Err(format!(
+                    "[metatrader.mcp] names '{feed_id}', which is not a MetaTrader feed"
+                ));
+            }
+            if entry.url.trim().is_empty() || entry.token.trim().is_empty() {
+                return Err(format!(
+                    "[metatrader.mcp.{feed_id}] needs both a url and a token"
+                ));
+            }
         }
         Ok(())
     }
@@ -2049,6 +2081,52 @@ mod tests {
         // mapped — they simply cannot stream at the same time.
         let unmapped = text.replace("[metatrader.ports]\n            US500 = 9102", "");
         assert!(parse(&unmapped, ConfigSource::Embedded, &AddedSymbols::default()).is_ok());
+    }
+
+    #[test]
+    fn each_metatrader_feed_names_its_own_mcp() {
+        let text = r#"
+            default_feed = "mac"
+            default_symbol = "WINZ26"
+            [[feeds]]
+            id = "mac"
+            name = "Mac"
+            provider = "metatrader"
+            symbols = ["WINZ26"]
+            [[feeds]]
+            id = "vps"
+            name = "VPS"
+            provider = "metatrader"
+            symbols = ["WINZ26"]
+            [metatrader]
+            listen_addr = "127.0.0.1:9100"
+            [metatrader.mcp.mac]
+            url = "http://127.0.0.1:22346/mcp"
+            token = "mac-token"
+            [metatrader.mcp.vps]
+            url = "http://193.202.85.32:22346/mcp"
+            token = "vps-token"
+        "#;
+        let config = parse(text, ConfigSource::Embedded, &AddedSymbols::default())
+            .expect("one mcp per feed");
+        assert_eq!(
+            config.metatrader.named_mcp("vps"),
+            NamedMcp::Own {
+                url: "http://193.202.85.32:22346/mcp",
+                token: "vps-token",
+            }
+        );
+        assert_eq!(
+            config.metatrader.named_mcp("mac"),
+            NamedMcp::Own {
+                url: "http://127.0.0.1:22346/mcp",
+                token: "mac-token",
+            }
+        );
+        let missing = text.replace("id = \"vps\"", "id = \"other\"");
+        let err = parse(&missing, ConfigSource::Embedded, &AddedSymbols::default())
+            .expect_err("the mcp key must name a feed");
+        assert!(err.to_string().contains("vps"), "{err}");
     }
 
     #[test]

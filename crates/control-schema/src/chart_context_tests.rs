@@ -3,6 +3,7 @@ use quantick_stores::indicator_state::SavedInput;
 
 fn saved(kind: SavedKind, inputs: Vec<SavedInput>) -> SavedIndicator {
     SavedIndicator {
+        window: 0,
         kind,
         hidden: false,
         mouse_vertical_line: false,

@@ -91,6 +91,7 @@ impl LayoutAdapter<'_> {
                     .pane_mut_at(tab, side)
                     .and_then(|p| p.indicators.view_mut(slot))
                     .ok_or(IndicatorRefusal::ViewClosed)?;
+                let line = view.style.get(plot).line;
                 view.style.set(
                     plot,
                     crate::indicator_style::PlotOverride {
@@ -99,6 +100,7 @@ impl LayoutAdapter<'_> {
                             .color
                             .map(|c| quantick_indicators::Rgba8::new(c[0], c[1], c[2], c[3])),
                         width: style.width,
+                        line,
                     },
                 );
                 IndicatorEdit::Style(owner)

@@ -157,6 +157,7 @@ impl SwitchTarget {
                     .clone()
                     .unwrap_or_else(|| ROLL_KEEPS.to_owned()),
             ),
+            sources: Vec::new(),
         };
         let named = row_matches(world, &row, needle) || self.symbol.to_lowercase().contains(needle);
         named.then_some(row)
@@ -176,17 +177,15 @@ impl SwitchTarget {
             .then(|| self.roll_row(world, &query.to_lowercase()))
             .flatten();
         for group in &mut listing.groups {
-            group.rows.retain(|row| {
-                let rolled = (roll.as_ref()).is_some_and(|roll| {
-                    (&row.feed_id, &row.symbol) == (&roll.feed_id, &roll.symbol)
+            if let Some(roll) = &roll {
+                group.rows.retain_mut(|row| {
+                    row.kind != VenueKind::Replay && !row.strip(&roll.feed_id, &roll.symbol)
                 });
-                row.kind != VenueKind::Replay && !rolled
-            });
+            } else {
+                group.rows.retain(|row| row.kind != VenueKind::Replay);
+            }
             for row in &mut group.rows {
-                let own = (&row.feed_id, &row.symbol) == (&self.feed_id, &self.symbol);
-                if own && row.status != MarketStatus::Add {
-                    row.status = MarketStatus::ThisTab;
-                }
+                row.note_this_tab(&self.feed_id, &self.symbol);
             }
         }
         listing

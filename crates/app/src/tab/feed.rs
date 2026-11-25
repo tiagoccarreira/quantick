@@ -368,19 +368,26 @@ impl Tab {
     /// Start or stop the account MCP poller so it tracks this tab's source.
     pub fn sync_account_poller(&mut self, config: &AppConfig) {
         let source = *self.link.feed_capabilities.borrow();
-        let want = source.open_positions
-            && self.link.replay.is_none()
-            && crate::account::resolve_token(&config.metatrader).is_some();
+        let mcp = self.account.mcp_feed(&self.feed_id).to_owned();
+        let target = crate::account::target_for(&config.metatrader, &mcp);
+        let want = source.open_positions && self.link.replay.is_none() && target.is_some();
         if !want {
             self.account.link = None;
             return;
         }
-        match &self.account.link {
-            Some(link) => link.set_symbol(self.symbol.clone()),
-            None => {
-                self.account.link = crate::account::spawn(&config.metatrader, self.symbol.clone());
+        let target = target.expect("want");
+        if self
+            .account
+            .link
+            .as_ref()
+            .is_some_and(|link| link.serves(&target))
+        {
+            if let Some(link) = &self.account.link {
+                link.set_symbol(self.symbol.clone());
             }
+            return;
         }
+        self.account.link = crate::account::spawn_target(target, self.symbol.clone());
     }
 
     /// Bring the arrived-at asset's own bubble settings on screen, filing the

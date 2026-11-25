@@ -27,6 +27,7 @@ fn an_empty_pane_lists_nothing() {
 fn volume(loaded: bool) -> (u64, quantick_stores::indicator_state::SavedIndicator, bool) {
     use quantick_stores::indicator_state::{SavedIndicator, SavedKind};
     let saved = SavedIndicator {
+        window: 0,
         kind: SavedKind::native("native.volume"),
         hidden: false,
         mouse_vertical_line: false,

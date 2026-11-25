@@ -211,7 +211,11 @@ fn draw_list(ui: &mut Ui, session: &mut Session<'_>) {
             ));
             for row_index in 0..session.state().listing.groups[group_index].rows.len() {
                 let row = &session.state().listing.groups[group_index].rows[row_index];
-                let response = paint_row(ui, row, session.state().selected(row));
+                let shown = session
+                    .state()
+                    .palette()
+                    .project(row);
+                let response = paint_row(ui, &shown, session.state().selected(row));
                 if row.selectable() && ((response.hovered() && moved) || response.clicked()) {
                     session.update(Intent::Row {
                         index,

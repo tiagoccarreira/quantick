@@ -143,6 +143,7 @@ impl IndicatorViews {
                         style: crate::indicator_style::StyleOverride::default(),
                         inks: Vec::new(),
                         last_auto: None,
+                        window: 0,
                     });
                 }
             }
@@ -383,12 +384,16 @@ impl IndicatorViews {
             .filter(|v| v.descriptor.overlay && !v.hidden && v.error.is_none())
     }
 
-    /// Pane indicators that get a pane right now, capped at [`MAX_PANES`].
+    /// One pane per window, capped at [`MAX_PANES`].
+    ///
+    /// Indicators that share a window count as one pane: the first of them,
+    /// in add order, owns the axis and the height. The others draw in that
+    /// same rect.
     pub fn visible_panes(&self) -> impl Iterator<Item = &IndicatorView> {
+        let hosts = self.host_slots();
         self.views
             .iter()
-            .filter(|v| is_visible_pane(v))
-            .take(MAX_PANES)
+            .filter(move |view| hosts.contains(&view.slot))
     }
 
     /// What the layout needs to carve the pane band: one sizing per visible
@@ -413,14 +418,163 @@ impl IndicatorViews {
     /// range it fitted and the axis gesture moves the scale, both on the view
     /// the pane rect belongs to.
     pub fn visible_panes_mut(&mut self) -> impl Iterator<Item = &mut IndicatorView> {
+        let hosts = self.host_slots();
         self.views
             .iter_mut()
-            .filter(|v| is_visible_pane(v))
-            .take(MAX_PANES)
+            .filter(move |view| hosts.contains(&view.slot))
+    }
+
+    /// The pane slots, in add order, one per window, capped at [`MAX_PANES`].
+    pub fn host_slots(&self) -> Vec<SlotId> {
+        let mut seen: Vec<GroupKey> = Vec::new();
+        let mut hosts = Vec::new();
+        for view in self.views.iter().filter(|view| is_visible_pane(view)) {
+            let key = group_key(view);
+            if seen.contains(&key) {
+                continue;
+            }
+            seen.push(key);
+            hosts.push(view.slot);
+            if hosts.len() == MAX_PANES {
+                break;
+            }
+        }
+        hosts
+    }
+
+    /// Every visible member of `host`'s window, host first, in add order.
+    pub fn window_members(&self, host: SlotId) -> Vec<SlotId> {
+        let Some(key) = self
+            .views
+            .iter()
+            .find(|view| view.slot == host)
+            .map(group_key)
+        else {
+            return Vec::new();
+        };
+        self.views
+            .iter()
+            .filter(|view| is_visible_pane(view) && group_key(view) == key)
+            .map(|view| view.slot)
+            .collect()
+    }
+
+    /// Where `kind`/`ordinal` draws: the index of its window among the panes
+    /// actually carved. `None` when that indicator has no pane.
+    pub fn host_index_for(&self, kind: &str, ordinal: u8) -> Option<usize> {
+        let view = self
+            .views
+            .iter()
+            .find(|view| view.kind.as_ref() == kind && view.ordinal == ordinal)?;
+        if !is_visible_pane(view) {
+            return None;
+        }
+        let key = group_key(view);
+        self.host_slots().iter().position(|slot| {
+            self.views
+                .iter()
+                .find(|host| host.slot == *slot)
+                .is_some_and(|host| group_key(host) == key)
+        })
+    }
+
+    /// Where value 0 sits for `slot`'s window, from the top of the pane.
+    /// `None` when the indicator has the pane to itself.
+    pub fn shared_zero_for(&self, slot: SlotId) -> Option<f32> {
+        let window = self.views.iter().find(|view| view.slot == slot)?.window;
+        if window == 0 {
+            return None;
+        }
+        let ranges: Vec<(f64, f64)> = self
+            .views
+            .iter()
+            .filter(|view| view.window == window && is_visible_pane(view))
+            .filter_map(|view| {
+                let (lo, hi) = view.scale.resolve(view.last_auto?);
+                let align = super::pane_values::align_value(view);
+                Some((lo - align, hi - align))
+            })
+            .collect();
+        super::shared_zero_from_top(&ranges)
+    }
+
+    /// Draw `slot` in `with`'s window. A window of one stays a window of one
+    /// until something joins it. The joiner drops a manual scale so it fits
+    /// the shared rect instead of keeping a range from its old pane.
+    pub fn join_window(&mut self, slot: SlotId, with: SlotId) {
+        if slot == with || self.views.iter().all(|view| view.slot != with) {
+            return;
+        }
+        let other = self
+            .views
+            .iter()
+            .find(|view| view.slot == with)
+            .map(|view| view.window)
+            .unwrap_or(0);
+        let id = if other == 0 {
+            self.alloc_window()
+        } else {
+            other
+        };
+        if other == 0
+            && let Some(view) = self.views.iter_mut().find(|view| view.slot == with)
+        {
+            view.window = id;
+        }
+        if let Some(view) = self.views.iter_mut().find(|view| view.slot == slot) {
+            view.window = id;
+            view.scale = PriceView::new();
+        }
+    }
+
+    /// Give `slot` a window of its own again.
+    pub fn detach_window(&mut self, slot: SlotId) {
+        if let Some(view) = self.views.iter_mut().find(|view| view.slot == slot) {
+            view.window = 0;
+        }
+    }
+
+    /// Put `slot` in window `window`. `0` is a window of its own. A shared
+    /// window drops a manual scale, the same way [`Self::join_window`] does,
+    /// so a restored group fits the shared rect.
+    pub fn assign_window(&mut self, slot: SlotId, window: u32) -> bool {
+        let Some(view) = self.views.iter_mut().find(|view| view.slot == slot) else {
+            return false;
+        };
+        if view.window != window {
+            view.window = window;
+            if window != 0 {
+                view.scale = PriceView::new();
+            }
+        }
+        true
+    }
+
+    fn alloc_window(&self) -> u32 {
+        self.views
+            .iter()
+            .map(|view| view.window)
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1)
     }
 }
 
-/// Whether this indicator gets a pane of its own right now.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum GroupKey {
+    Alone(u64),
+    Shared(u32),
+}
+
+fn group_key(view: &IndicatorView) -> GroupKey {
+    if view.window == 0 {
+        GroupKey::Alone(view.slot.0)
+    } else {
+        GroupKey::Shared(view.window)
+    }
+}
+
+/// Whether this indicator draws in a pane (not on the price) right now.
 ///
 /// One predicate for both iterators, because the two are zipped against the
 /// same rects: `plot_split` carves bands from `visible_panes().count()` and the

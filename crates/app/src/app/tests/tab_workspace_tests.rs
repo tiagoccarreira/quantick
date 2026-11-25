@@ -47,6 +47,7 @@ fn frames(app: &mut QuantickApp, count: usize) {
 
 fn ema() -> quantick_workspace::indicator_document::SavedIndicator {
     quantick_workspace::indicator_document::SavedIndicator {
+        window: 0,
         kind: quantick_workspace::indicator_document::SavedKind::native("native.ema"),
         hidden: false,
         mouse_vertical_line: false,
@@ -674,6 +675,7 @@ fn a_recipe_of_three_sets_lands_one_and_an_edit_reaches_every_pane_of_the_tab() 
     three.flow_indicators = vec![ema()];
     three.context_panes[0].indicators = Vec::new();
     let cvd = quantick_workspace::indicator_document::SavedIndicator {
+        window: 0,
         kind: quantick_workspace::indicator_document::SavedKind::native("native.cvd"),
         ..ema()
     };
@@ -751,6 +753,7 @@ fn a_desk_on_twin_copies_comes_back_on_the_fullest_set() {
     let flow = app.active_tab().flow_pane.layout_id().expect("seeded");
     let mut book = app.runtime.layout_state().layouts().clone();
     let native = |id: &str| quantick_workspace::indicator_document::SavedIndicator {
+        window: 0,
         kind: quantick_workspace::indicator_document::SavedKind::native(id),
         ..ema()
     };
@@ -2028,6 +2031,7 @@ fn frames_until(
 
 fn native(id: &str) -> quantick_workspace::indicator_document::SavedIndicator {
     quantick_workspace::indicator_document::SavedIndicator {
+        window: 0,
         kind: quantick_workspace::indicator_document::SavedKind::native(id),
         ..ema()
     }

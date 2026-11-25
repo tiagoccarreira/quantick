@@ -88,6 +88,10 @@ pub(super) enum SettingsChange {
         commit: bool,
     },
     Style(TabSlot),
+    Window {
+        target: TabSlot,
+        join: Option<u64>,
+    },
 }
 
 impl From<quantick_ui_model::indicator_settings::Change> for SettingsChange {
@@ -104,6 +108,9 @@ impl From<quantick_ui_model::indicator_settings::Change> for SettingsChange {
                 commit,
             },
             quantick_ui_model::indicator_settings::Change::Style(target) => Self::Style(target),
+            quantick_ui_model::indicator_settings::Change::Window { target, join } => {
+                Self::Window { target, join }
+            }
         }
     }
 }
@@ -111,7 +118,9 @@ impl From<quantick_ui_model::indicator_settings::Change> for SettingsChange {
 impl SettingsChange {
     pub(super) fn target(&self) -> TabSlot {
         match self {
-            Self::Inputs { target, .. } | Self::Style(target) => *target,
+            Self::Inputs { target, .. } | Self::Style(target) | Self::Window { target, .. } => {
+                *target
+            }
         }
     }
     pub(super) fn worker_target(&self) -> Option<TabSlot> {
@@ -124,6 +133,7 @@ impl SettingsChange {
     pub(super) fn deliver(self, worker: Option<&IndicatorWorker>) -> Option<IndicatorEdit> {
         match self {
             Self::Style(target) => Some(IndicatorEdit::Style(target)),
+            Self::Window { .. } => None,
             Self::Inputs {
                 target,
                 slot,

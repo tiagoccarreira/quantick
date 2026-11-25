@@ -32,6 +32,13 @@ pub(super) struct ChromeState {
     pub(super) window_startup: crate::launch::window::WindowStartupState,
     /// Saved override for recording deal counters; `None` follows feed config.
     pub(super) record_deals: Option<bool>,
+    /// The Quantick bridge the asset list loads. Empty until launch fills it.
+    pub(super) bridge_feed: String,
+    /// The MCP the account asks. Empty until launch fills it.
+    pub(super) mcp_feed: String,
+    /// The first frame still owes the window a place on the Mac's main screen.
+    #[cfg(target_os = "macos")]
+    pub(super) place_on_main_screen: bool,
     /// Where the status word, the popup's door, and the tape cell's Reconnect
     /// were drawn: written as part of drawing them, so the scene says what is
     /// *painted*. The word has no capability behind it, so its rectangle is the

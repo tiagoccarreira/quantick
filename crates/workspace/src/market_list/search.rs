@@ -5,7 +5,9 @@
 use super::copy::{
     COMMAND_PREFIX, COMMANDS_GROUP, MARKETS_GROUP, RECENT_GROUP, START_HERE_GROUP, no_match_heading,
 };
-use super::rows::{MarketGroup, MarketListing, MarketRow, add_row, catalog_row, group, replay_row};
+use super::rows::{
+    DataSource, MarketGroup, MarketListing, MarketRow, add_row, catalog_row, group, replay_row,
+};
 use super::world::{MarketWorld, OpenMarket, VenueKind, find_market};
 
 /// The bar a market remembers: its first open tab's, else the one its tab
@@ -58,7 +60,7 @@ fn list_groups(world: &MarketWorld<'_>, query: &str) -> Vec<MarketGroup> {
             .filter(|venue| venue.kind == VenueKind::Live)
             .map(|venue| add_row(venue, query))
             .collect();
-        return vec![group(&no_match_heading(query), adds)];
+        return vec![group(&no_match_heading(query), collapse_same_symbol(adds))];
     }
     let mut assets: Vec<String> = Vec::new();
     for row in &found {
@@ -67,7 +69,41 @@ fn list_groups(world: &MarketWorld<'_>, query: &str) -> Vec<MarketGroup> {
         }
     }
     found.sort_by_key(|row| assets.iter().position(|asset| asset == &row.asset));
-    vec![group(MARKETS_GROUP, found)]
+    vec![group(MARKETS_GROUP, collapse_same_symbol(found))]
+}
+
+/// One row per symbol. Each feed that lists it stays on `sources`, live
+/// feeds first, so the footer can pick where the data comes from.
+fn collapse_same_symbol(rows: Vec<MarketRow>) -> Vec<MarketRow> {
+    let mut order: Vec<(String, bool)> = Vec::new();
+    let mut groups: Vec<Vec<MarketRow>> = Vec::new();
+    for row in rows {
+        let replay = row.kind == VenueKind::Replay;
+        if let Some(index) = order
+            .iter()
+            .position(|(symbol, seen)| symbol == &row.symbol && *seen == replay)
+        {
+            groups[index].push(row);
+        } else {
+            order.push((row.symbol.clone(), replay));
+            groups.push(vec![row]);
+        }
+    }
+    groups.into_iter().map(finish_symbol).collect()
+}
+
+fn finish_symbol(mut rows: Vec<MarketRow>) -> MarketRow {
+    if let Some(index) = rows
+        .iter()
+        .position(|row| row.kind != VenueKind::ComingSoon)
+        && index != 0
+    {
+        rows.swap(0, index);
+    }
+    let sources: Vec<DataSource> = rows.iter().map(DataSource::from_row).collect();
+    let mut row = rows.swap_remove(0);
+    row.sources = sources;
+    row
 }
 
 /// The tab Enter focuses for this market at this bar and workspace, if one

@@ -752,6 +752,9 @@ impl MarketPaletteOwners for QuantickApp {
     fn show_market_palette(&mut self, query: &str, target: Option<SwitchTarget>) -> PaletteShowing {
         let palette = &mut self.surfaces.market_palette;
         palette.update(Intent::open(query, target));
+        if !self.chrome.bridge_feed.is_empty() {
+            palette.update(Intent::Source(self.chrome.bridge_feed.clone()));
+        }
         Ok(())
     }
 }

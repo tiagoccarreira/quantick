@@ -10,6 +10,7 @@ const OTHER: LayoutId = LayoutId(2);
 
 fn saved(kind: SavedKind) -> SavedIndicator {
     SavedIndicator {
+        window: 0,
         kind,
         hidden: false,
         mouse_vertical_line: false,
@@ -135,6 +136,7 @@ fn each_edit_writes_its_own_field() {
         visible: Some(false),
         color: None,
         width: Some(2.5),
+        line: None,
     };
     for edit in [
         LayoutEdit::Hidden(true),
@@ -161,9 +163,11 @@ fn saved_set_materialises_as_before() {
         visible: None,
         color: Some([1, 2, 3, 255]),
         width: Some(1.5),
+        line: None,
     };
     let set = vec![
         SavedIndicator {
+            window: 0,
             kind: SavedKind::native("native.ema"),
             hidden: true,
             mouse_vertical_line: false,
@@ -171,6 +175,7 @@ fn saved_set_materialises_as_before() {
             plot_styles: vec![style],
         },
         SavedIndicator {
+            window: 0,
             kind: SavedKind::Script {
                 name: "zigzag.pine".into(),
             },
@@ -191,6 +196,7 @@ fn saved_set_materialises_as_before() {
         plan,
         vec![
             Materialise {
+                window: 0,
                 kind: &set[0].kind,
                 inputs: SavedInputs::Bind(set[0].inputs.clone()),
                 hidden: true,
@@ -198,6 +204,7 @@ fn saved_set_materialises_as_before() {
                 plot_styles: Some(&[style][..]),
             },
             Materialise {
+                window: 0,
                 kind: &set[1].kind,
                 inputs: SavedInputs::Dropped {
                     saved: 2,
@@ -208,6 +215,7 @@ fn saved_set_materialises_as_before() {
                 plot_styles: None,
             },
             Materialise {
+                window: 0,
                 kind: &set[2].kind,
                 inputs: SavedInputs::Defaults,
                 hidden: false,

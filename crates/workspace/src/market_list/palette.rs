@@ -35,6 +35,10 @@ pub struct MarketPalette {
     focus_request: Option<PaletteFocus>,
     /// The trader's bar, as `kind:size`; `None` follows the selected row.
     bar: Option<String>,
+    /// The feed a typed symbol loads from, when the trader picked one.
+    /// Absent follows the row's first live feed, and a pick that the next
+    /// symbol does not offer falls back the same way.
+    source: Option<String>,
     workspace: String,
     refusal: Option<String>,
     /// Switch mode: the tab Enter switches, rather than opening a tab.
@@ -49,6 +53,7 @@ impl Default for MarketPalette {
             focus: PaletteFocus::Field,
             focus_request: Some(PaletteFocus::Field),
             bar: None,
+            source: None,
             workspace: DEFAULT_WORKSPACE.to_owned(),
             refusal: None,
             switching: None,
@@ -187,7 +192,10 @@ impl MarketPalette {
     pub fn bar(&self, listing: &MarketListing) -> String {
         (self.bar.clone())
             .or_else(|| self.switching.as_ref().map(|target| target.bar.clone()))
-            .or_else(|| self.selected_row(listing).and_then(|row| row.bar.clone()))
+            .or_else(|| {
+                self.selected_row(listing)
+                    .and_then(|row| self.project(row).bar)
+            })
             .or_else(|| listing.inherited_bar.clone())
             .unwrap_or_default()
     }
@@ -223,6 +231,30 @@ impl MarketPalette {
 
     pub fn set_workspace(&mut self, name: &str) {
         name.clone_into(&mut self.workspace);
+    }
+
+    /// Remember which feed a searched symbol should load from.
+    pub fn set_source(&mut self, feed_id: &str) {
+        if self.source.as_deref() != Some(feed_id) {
+            self.source = Some(feed_id.to_owned());
+            self.refusal = None;
+        }
+    }
+
+    /// The feed Enter uses for `row`: the trader's pick when that row offers
+    /// it, otherwise the row's own feed.
+    #[must_use]
+    pub fn chosen_feed<'a>(&self, row: &'a MarketRow) -> &'a str {
+        self.source
+            .as_deref()
+            .and_then(|feed| row.live_feed(feed))
+            .unwrap_or(&row.feed_id)
+    }
+
+    /// `row` as [`Self::chosen_feed`] carries it.
+    #[must_use]
+    pub fn project(&self, row: &MarketRow) -> MarketRow {
+        row.project(self.chosen_feed(row))
     }
 
     #[must_use]
@@ -300,10 +332,15 @@ impl MarketPalette {
         if self.commands_mode() {
             return PrimaryAction::Run.label();
         }
+        let Some(row) = self.selected_row(listing) else {
+            return match &self.switching {
+                Some(_) => "Switch".to_owned(),
+                None => PrimaryAction::Open.label(),
+            };
+        };
+        let projected = self.project(row);
         let bar = self.bar(listing);
-        let chosen = self
-            .selected_row(listing)
-            .and_then(|row| self.action(row, &bar));
+        let chosen = self.action(&projected, &bar);
         match (chosen, &self.switching) {
             (Some(action), _) => action.label(),
             (None, Some(_)) => "Switch".to_owned(),

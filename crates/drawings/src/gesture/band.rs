@@ -99,10 +99,7 @@ pub fn band_refusal(
     let DrawingBand::Indicator(key) = band else {
         return None;
     };
-    match views
-        .visible_panes()
-        .position(|view| *view.kind == *key.kind && view.ordinal == key.ordinal)
-    {
+    match views.host_index_for(key.kind.as_ref(), key.ordinal) {
         None => Some(ABSENT_BAND_REFUSAL),
         Some(index) => collapsed
             .get(index)

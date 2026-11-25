@@ -22,6 +22,7 @@ fn book(autosave: bool) -> WorkspaceBook {
 
 fn indicator(id: &str) -> SavedIndicator {
     SavedIndicator {
+        window: 0,
         kind: SavedKind::native(id),
         hidden: false,
         mouse_vertical_line: false,

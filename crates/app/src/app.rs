@@ -298,14 +298,17 @@ impl QuantickApp {
             &state_path,
         );
         let mut pane_ids = PaneIdAllocator::new();
+        let feed_id = feed_id.into();
+        let connection = chrome::settings::initial_connection(&config, &feed_id);
         let mut tab = Tab::new(
             pane_ids.alloc(),
-            feed_id.into(),
+            feed_id,
             symbol.into(),
             spec,
             feed,
             trades_dir.clone(),
         );
+        tab.account.set_mcp_feed(connection.clone());
         // The ticket settings the trader left, unless a launch hook outranks them.
         tab.paper.restore_settings(&paper_state);
         crate::paper_state::restore_money(tab.paper.account_mut(), &paper_state);
@@ -323,6 +326,10 @@ impl QuantickApp {
                 #[cfg(any(feature = "scenario-harness", test))]
                 window_startup: launch.window,
                 record_deals: None,
+                bridge_feed: connection.clone(),
+                mcp_feed: connection,
+                #[cfg(target_os = "macos")]
+                place_on_main_screen: true,
                 add_menu: Default::default(),
                 capsule: Default::default(),
                 toolbar_controls: Vec::new(),

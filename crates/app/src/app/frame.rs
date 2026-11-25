@@ -284,6 +284,8 @@ impl QuantickApp {
             #[cfg(any(feature = "scenario-harness", test))]
             FrameStage::WindowStartupHook => self.chrome.window_startup.apply(ctx),
             FrameStage::WindowHousekeeping => {
+                #[cfg(target_os = "macos")]
+                crate::launch::place_on_main_screen(ctx, &mut self.chrome.place_on_main_screen);
                 self.maybe_emit_summary(now, ctx);
                 self.workspace_save_adapter().maintain_workspace(ctx);
             }

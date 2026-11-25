@@ -1,5 +1,5 @@
 //! Live account overlay and the CONTA plate: positions and account type from
-//! the local MetaTrader MCP, plus close on the poller thread. Buy/Sell live on
+//! the selected connection's MetaTrader MCP, plus close on the poller thread. Buy/Sell live on
 //! the toolbar and route through [`ExecutionTarget`].
 //!
 //! The feed crate never sees this. Overlay paint stays read-only. Orders leave
@@ -15,7 +15,7 @@ use rust_decimal::Decimal;
 use tokio::sync::watch;
 
 use crate::chart::PriceScale;
-use crate::config::MetaTraderSettings;
+use crate::config::{MetaTraderSettings, NamedMcp};
 use crate::paper_chrome::fmt_decimal;
 use crate::theme;
 
@@ -245,7 +245,36 @@ fn fmt_open_pnl(value: Decimal) -> String {
     }
 }
 
-/// Token the poller may send, or `None` when the overlay must stay dark.
+/// Url and bearer token for one connection's account MCP.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct McpTarget {
+    pub url: String,
+    pub token: String,
+}
+
+/// The MCP `feed_id` should be asked. A feed that names its own entry never
+/// receives the shared token.
+#[must_use]
+pub(crate) fn target_for(settings: &MetaTraderSettings, feed_id: &str) -> Option<McpTarget> {
+    match settings.named_mcp(feed_id) {
+        NamedMcp::Own { url, token } => Some(McpTarget {
+            url: url.to_owned(),
+            token: token.to_owned(),
+        }),
+        NamedMcp::Dark => None,
+        NamedMcp::Shared => shared_target(settings),
+    }
+}
+
+fn shared_target(settings: &MetaTraderSettings) -> Option<McpTarget> {
+    let token = resolve_token(settings)?;
+    Some(McpTarget {
+        url: settings.mcp_url.trim().to_owned(),
+        token,
+    })
+}
+
+/// Token the shared MCP may send, or `None` when that overlay must stay dark.
 #[must_use]
 pub fn resolve_token(settings: &MetaTraderSettings) -> Option<String> {
     let env = std::env::var(TOKEN_ENV).ok();
@@ -268,6 +297,8 @@ pub struct VenueSession {
     pub chart_drag: chart::VenueChartDrag,
     /// Instrument price tick from the feed widgets; MCP pending/SL/TP snap here.
     price_tick: Option<Decimal>,
+    /// The connection whose MCP this account asks. None follows the chart feed.
+    mcp_feed: Option<String>,
 }
 
 impl Default for VenueSession {
@@ -277,11 +308,23 @@ impl Default for VenueSession {
             ticket: VenueTicket::load(),
             chart_drag: chart::VenueChartDrag::None,
             price_tick: None,
+            mcp_feed: None,
         }
     }
 }
 
 impl VenueSession {
+    /// Ask this connection's MCP instead of the chart's feed.
+    pub fn set_mcp_feed(&mut self, feed: impl Into<String>) {
+        self.mcp_feed = Some(feed.into());
+    }
+
+    /// The MCP feed: the one Settings picked, or the chart feed.
+    #[must_use]
+    pub fn mcp_feed<'a>(&'a self, chart_feed: &'a str) -> &'a str {
+        self.mcp_feed.as_deref().unwrap_or(chart_feed)
+    }
+
     /// Remember the feed's widget tick (`None` when unknown or not positive).
     pub fn set_price_tick(&mut self, tick: Option<Decimal>) {
         self.price_tick = tick.filter(|tick| *tick > Decimal::ZERO);
@@ -311,6 +354,8 @@ pub struct AccountLink {
     symbol_tx: watch::Sender<String>,
     cmd_tx: std::sync::mpsc::Sender<TradeCommand>,
     notice_rx: std::sync::mpsc::Receiver<TradeNotice>,
+    url: String,
+    token: String,
     stop: Arc<AtomicBool>,
 }
 
@@ -346,6 +391,12 @@ impl AccountLink {
         let _ = self.symbol_tx.send(symbol.into());
     }
 
+    /// Whether this poller is already talking to `target`.
+    #[must_use]
+    pub(crate) fn serves(&self, target: &McpTarget) -> bool {
+        self.url == target.url && self.token == target.token
+    }
+
     pub fn submit(&self, command: TradeCommand) {
         let _ = self.cmd_tx.send(command);
     }
@@ -365,14 +416,15 @@ impl Drop for AccountLink {
     }
 }
 
-/// Spawn the MCP poller, or `None` when url/token/symbol cannot be asked.
+/// Spawn the poller for one connection, or `None` when the symbol is empty.
 #[must_use]
-pub fn spawn(settings: &MetaTraderSettings, symbol: String) -> Option<AccountLink> {
-    let url = settings.mcp_url.trim().to_owned();
-    let token = resolve_token(settings)?;
-    if url.is_empty() || symbol.is_empty() {
+pub(crate) fn spawn_target(target: McpTarget, symbol: String) -> Option<AccountLink> {
+    if symbol.is_empty() {
         return None;
     }
+    let McpTarget { url, token } = target;
+    let link_url = url.clone();
+    let link_token = token.clone();
     let (snap_tx, snap_rx) = watch::channel(None);
     let (symbol_tx, symbol_rx) = watch::channel(symbol);
     let (cmd_tx, cmd_rx) = std::sync::mpsc::channel();
@@ -416,6 +468,8 @@ pub fn spawn(settings: &MetaTraderSettings, symbol: String) -> Option<AccountLin
         symbol_tx,
         cmd_tx,
         notice_rx,
+        url: link_url,
+        token: link_token,
         stop,
     })
 }

@@ -29,6 +29,9 @@ pub(crate) struct IndicatorPanelEnv<'a> {
     pub kind: Option<&'a quantick_workspace::indicator_document::SavedKind>,
     pub presets: &'a mut crate::indicators::preset_file::PresetStore,
     pub presets_path: &'a std::path::Path,
+    /// Other pane indicators this one can share a window with. `None` for an
+    /// overlay, which already draws on the price.
+    pub mates: Option<&'a [crate::indicator_panel::WindowMate]>,
 }
 /// The access host is optional during initialization and teardown.
 pub(crate) struct AccessPanelEnv<'a> {

@@ -150,6 +150,17 @@ impl LaunchConfig {
     pub fn native_options(&self, saved: Option<[f32; 2]>) -> eframe::NativeOptions {
         let icon = eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon.png"))
             .expect("bundled assets/icon.png is a valid PNG");
+        let size = self.window_size(saved);
+        let mut viewport = eframe::egui::ViewportBuilder::default()
+            .with_inner_size(size)
+            .with_title("quantick")
+            .with_decorations(false)
+            .with_icon(icon);
+        // The Mac's main display, the one that holds the menu bar. Without a
+        // position the window opens on whichever display is active.
+        if let Some(at) = main_screen_origin(size) {
+            viewport = viewport.with_position(eframe::egui::pos2(at[0], at[1]));
+        }
         eframe::NativeOptions {
             // No `with_min_inner_size`: the window has no floor. Below roughly
             // 900x560 the chrome stops collapsing and starts clipping — the
@@ -159,11 +170,7 @@ impl LaunchConfig {
             // in a sliver beside another window is a real thing to want. The
             // one place a floor is still kept is what the app *reopens* at;
             // see [`REOPEN_FLOOR_PX`].
-            viewport: eframe::egui::ViewportBuilder::default()
-                .with_inner_size(self.window_size(saved))
-                .with_title("quantick")
-                .with_decorations(false)
-                .with_icon(icon),
+            viewport,
             ..Default::default()
         }
     }
@@ -255,6 +262,53 @@ const DEFAULT_WINDOW_PX: [f32; 2] = [1100.0, 650.0];
 /// and a title bar to drag. It is a recovery floor, not a layout one: nothing
 /// about the chrome is promised at this size.
 const REOPEN_FLOOR_PX: [f32; 2] = [320.0, 240.0];
+
+/// Top-left of a window of `size`, centered on the Mac's main display.
+/// `None` when this process is not on macOS or the display cannot be read.
+fn main_screen_origin(size: [f32; 2]) -> Option<[f32; 2]> {
+    quantick_platform::primary_work_area().and_then(|area| quantick_platform::center_in(area, size))
+}
+
+/// Move the root window onto the Mac's main display once it has a size.
+///
+/// One move, on the first frame that knows the window's outer size. A later
+/// drag to another display stays where the trader put it. Off macOS there is
+/// nothing to do, and a window that has not reported a size yet is left
+/// pending for the next frame.
+#[cfg(target_os = "macos")]
+pub(crate) fn place_on_main_screen(ctx: &eframe::egui::Context, pending: &mut bool) {
+    if !*pending {
+        return;
+    }
+    let Some(area) = quantick_platform::primary_work_area() else {
+        return;
+    };
+    let size = ctx.input(|input| {
+        input
+            .viewport()
+            .outer_rect
+            .map(|rect| [rect.width(), rect.height()])
+    });
+    let Some(size) = size else {
+        return;
+    };
+    *pending = false;
+    let Some([x, y]) = quantick_platform::center_in(area, size) else {
+        return;
+    };
+    let already = ctx.input(|input| {
+        input
+            .viewport()
+            .outer_rect
+            .is_some_and(|rect| (rect.min.x - x).abs() < 1.0 && (rect.min.y - y).abs() < 1.0)
+    });
+    if already {
+        return;
+    }
+    ctx.send_viewport_cmd(eframe::egui::ViewportCommand::OuterPosition(
+        eframe::egui::pos2(x, y),
+    ));
+}
 
 /// The size a saved workspace reopens at, floored at [`REOPEN_FLOOR_PX`].
 ///

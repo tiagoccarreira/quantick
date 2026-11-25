@@ -301,6 +301,7 @@ fn deferred_state_retries_known_targets_applies_exact_style_once_and_discards_st
                 a: 71,
             }),
             width: Some(0.75),
+            line: None,
         },
         PlotOverride::default(),
         PlotOverride {

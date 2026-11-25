@@ -237,6 +237,7 @@ fn a_kept_twin_follows_the_copy_it_merged_into() {
 
 fn entry(kind: crate::indicator_document::SavedKind) -> SavedIndicator {
     SavedIndicator {
+        window: 0,
         kind,
         hidden: false,
         mouse_vertical_line: false,
@@ -285,6 +286,7 @@ fn the_fullest_set_counts_kinds_not_entries() {
 #[test]
 fn what_is_not_shown_names_lost_kinds_and_lost_settings() {
     let hidden_cvd = SavedIndicator {
+        window: 0,
         hidden: true,
         ..cvd()
     };

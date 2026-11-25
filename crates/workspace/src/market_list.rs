@@ -7,7 +7,8 @@
 //! cannot disagree about a market.
 //!
 //! Rows are grouped only through the explicit `asset` key the config gives a
-//! symbol; nothing is merged by guessing at a symbol's text.
+//! symbol. A typed query then folds the same symbol across feeds into one
+//! row, and the footer chooses which feed loads it.
 //!
 //! Each layer reads only the ones above it: `copy` (the fixed words),
 //! `world` (what the list is told), `rows` (what it shows), `search` (finding
@@ -33,7 +34,7 @@ pub use copy::{
     no_match_heading, roll_toast, switch_toast,
 };
 pub use palette::{MarketPalette, PaletteFocus, PaletteIntent, PaletteKey, delete_removes_row};
-pub use rows::{MarketGroup, MarketListing, MarketRow, MarketStatus, StatusTone};
+pub use rows::{DataSource, MarketGroup, MarketListing, MarketRow, MarketStatus, StatusTone};
 pub use search::{focus_target, list_markets, market_bar, market_context_bars, removal_refusal};
 pub use world::{
     CatalogMarket, ClosedMarket, MarketSnapshot, MarketWorld, OpenMarket, RecentMarkets, Venue,

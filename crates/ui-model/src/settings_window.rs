@@ -12,6 +12,23 @@ pub struct Facts {
     /// The local agent gateway, as its panel reads it; the default is no gateway.
     pub agent: crate::access_panel::Facts,
     pub agent_note: Option<AgentNote>,
+    /// MetaTrader connections the Connections section lists.
+    pub connections: Vec<ConnectionChoice>,
+    /// The feed whose bridge the asset list loads.
+    pub bridge_feed: String,
+    /// The feed whose MCP the account asks.
+    pub mcp_feed: String,
+}
+
+/// One MetaTrader connection, as Settings shows it. No token.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ConnectionChoice {
+    pub id: String,
+    pub name: String,
+    /// Where the Quantick bridge dials.
+    pub bridge: String,
+    /// The account MCP endpoint, or a short reason it cannot be asked.
+    pub mcp: String,
 }
 
 /// The line under the agent switch.
@@ -106,16 +123,24 @@ pub enum Intent {
     ThemeFailed(String),
     /// The menu closed on the theme that landed.
     ThemeMenuClosed,
+    /// The asset list loads through this connection's bridge.
+    PickBridge(String),
+    /// The account asks this connection's MCP.
+    PickMcp(String),
 }
 
 /// What a row asked its owner to do.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Action {
     /// A row a connection may settle too, through the same owner.
     Row(SettingsAct),
     /// The Agent access rows: only the window carries these out.
     OpenAgentAccess,
     AgentSwitch(bool),
+    /// Load assets through this connection's Quantick bridge.
+    Bridge(String),
+    /// Ask this connection's MCP for the account.
+    Mcp(String),
 }
 
 #[derive(Debug, Default, PartialEq)]
@@ -169,6 +194,8 @@ impl crate::Model for Model {
                 state.theme_picked = None;
                 None
             }
+            Intent::PickBridge(id) => (id != state.facts.bridge_feed).then_some(Action::Bridge(id)),
+            Intent::PickMcp(id) => (id != state.facts.mcp_feed).then_some(Action::Mcp(id)),
         };
         Effects { action }
     }

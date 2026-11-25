@@ -54,6 +54,7 @@ pub struct IndicatorRegistry {
     pending_hidden: Vec<TabSlot>,
     pending_styles: Vec<(TabSlot, StyleOverride)>,
     pending_mouse_vertical_lines: Vec<TabSlot>,
+    pending_windows: Vec<(TabSlot, u32)>,
 }
 
 /// A numeric slot exists, but none of its registered targets is operator-owned.
@@ -156,6 +157,7 @@ impl IndicatorRegistry {
         self.pending_styles.retain(|(owner, _)| *owner != target);
         self.pending_mouse_vertical_lines
             .retain(|owner| *owner != target);
+        self.pending_windows.retain(|(owner, _)| *owner != target);
     }
 }
 
@@ -169,6 +171,7 @@ impl IndicatorRegistry {
             pending_hidden: Vec::new(),
             pending_styles: Vec::new(),
             pending_mouse_vertical_lines: Vec::new(),
+            pending_windows: Vec::new(),
         }
     }
     pub fn workspace(&self) -> WorkspaceId {
@@ -255,6 +258,13 @@ impl IndicatorRegistry {
     pub fn defer_mouse_vertical_line(&mut self, target: TabSlot) {
         self.pending_mouse_vertical_lines.push(target);
     }
+    /// Queue a shared window until the view exists. `0` clears a queued one.
+    pub fn defer_window(&mut self, target: TabSlot, window: u32) {
+        self.pending_windows.retain(|(owner, _)| *owner != target);
+        if window != 0 {
+            self.pending_windows.push((target, window));
+        }
+    }
     /// Retry only registered slots whose worker has not published a view yet.
     /// Preserve application order: hides, styles, then non-overlay mouse guides.
     pub fn apply_pending(&mut self, host: &mut impl IndicatorViewHost) {
@@ -279,6 +289,13 @@ impl IndicatorRegistry {
                 Some(_) | None => {}
             }
         }
+        for (target, window) in std::mem::take(&mut self.pending_windows) {
+            match host.view_mut(target) {
+                Some(view) => view.window = window,
+                None if self.contains(target) => self.defer_window(target, window),
+                None => {}
+            }
+        }
     }
     pub fn clear(&mut self) {
         *self = Self::new(self.workspace);
@@ -292,6 +309,7 @@ impl IndicatorRegistry {
         self.pending_styles.retain(|(owner, _)| owner.tab != tab);
         self.pending_mouse_vertical_lines
             .retain(|owner| owner.tab != tab);
+        self.pending_windows.retain(|(owner, _)| owner.tab != tab);
     }
     /// Human slots in insertion order; operator overlays never become layout entries.
     pub fn layout_slots_at(&self, tab: u64, side: PaneSide) -> Vec<SlotId> {
@@ -320,6 +338,9 @@ impl IndicatorRegistry {
             reside(owner);
         }
         for owner in &mut self.pending_mouse_vertical_lines {
+            reside(owner);
+        }
+        for (owner, _) in &mut self.pending_windows {
             reside(owner);
         }
         for (owner, ..) in &mut self.script_files {

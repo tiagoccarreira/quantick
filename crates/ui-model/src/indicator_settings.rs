@@ -76,6 +76,9 @@ pub enum SettingsOutcome {
     SavePreset(String),
     DeletePreset(String),
     StyleChanged,
+    /// `None` puts this indicator back in a window of its own.
+    /// `Some` draws it in that indicator's window.
+    JoinWindow(Option<u64>),
 }
 
 #[derive(Debug)]
@@ -136,6 +139,10 @@ pub enum Change {
         commit: bool,
     },
     Style(TabSlot),
+    Window {
+        target: TabSlot,
+        join: Option<u64>,
+    },
 }
 
 #[derive(Debug, PartialEq)]
@@ -321,6 +328,9 @@ fn finish(state: &mut State, outcome: SettingsOutcome) -> Effects {
             });
         }
         SettingsOutcome::StyleChanged => effects.changes.push(Change::Style(target)),
+        SettingsOutcome::JoinWindow(join) => {
+            effects.changes.push(Change::Window { target, join });
+        }
         SettingsOutcome::LoadPreset(name) => {
             effects.local_operation = Some(LocalOperation::Load { target, name });
         }

@@ -242,6 +242,9 @@ impl LayoutAdapter<'_> {
                 let plots = styles.iter().copied().map(SavedPlotStyle::to_override);
                 registry.defer_style(owner, StyleOverride::from_plots(plots.collect()));
             }
+            if entry.window != 0 {
+                registry.defer_window(owner, entry.window);
+            }
         }
     }
 
@@ -434,6 +437,26 @@ impl LayoutAdapter<'_> {
             match pane.and_then(|pane| pane.indicators.view_mut(target.slot)) {
                 Some(view) => view.style = style.clone(),
                 None => (self.indicators.registry).replace_deferred_style(target, style.clone()),
+            }
+        }
+        self.mark_layouts_dirty();
+    }
+
+    /// Mirror the origin's window: the entry records it, and the same position
+    /// on every other pane of the layout joins that window.
+    pub(in crate::app) fn mirror_window(&mut self, origin: TabSlot) {
+        let Some(window) = self.view_at(origin).map(|view| view.window) else {
+            return;
+        };
+        let Some(targets) = self.mirror_slots(origin, LayoutEdit::Window(window)) else {
+            return;
+        };
+        for target in targets {
+            let applied = self
+                .pane_mut_at(target.tab, target.side)
+                .is_some_and(|pane| pane.indicators.assign_window(target.slot, window));
+            if !applied {
+                self.indicators.registry.defer_window(target, window);
             }
         }
         self.mark_layouts_dirty();

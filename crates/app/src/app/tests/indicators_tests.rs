@@ -200,6 +200,7 @@ fn the_indicator_set_restores_from_disk_and_saves_back() {
         &path,
         &[
             SavedIndicator {
+                window: 0,
                 kind: SavedKind::native("native.ema"),
                 hidden: false,
                 mouse_vertical_line: false,
@@ -207,6 +208,7 @@ fn the_indicator_set_restores_from_disk_and_saves_back() {
                 plot_styles: Vec::new(),
             },
             SavedIndicator {
+                window: 0,
                 kind: SavedKind::native("native.cvd"),
                 hidden: true,
                 mouse_vertical_line: false,
@@ -214,6 +216,7 @@ fn the_indicator_set_restores_from_disk_and_saves_back() {
                 plot_styles: Vec::new(),
             },
             SavedIndicator {
+                window: 0,
                 kind: SavedKind::Script {
                     name: "not-in-the-library.pine".to_owned(),
                 },
@@ -935,6 +938,7 @@ fn a_workspace_naming_a_native_this_build_lacks_restores_an_error_slot() {
     crate::indicators::state_file::save(
         &path,
         &[SavedIndicator {
+            window: 0,
             kind: SavedKind::native("native.from.the.future"),
             hidden: false,
             mouse_vertical_line: false,

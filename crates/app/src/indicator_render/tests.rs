@@ -42,6 +42,7 @@ fn view(columns: Vec<Vec<f64>>, preview: Option<Vec<f64>>) -> IndicatorView {
         sizing: crate::indicators::PaneSizing::Auto,
         inks: Vec::new(),
         last_auto: None,
+        window: 0,
     }
 }
 

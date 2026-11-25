@@ -27,6 +27,12 @@ pub(in crate::pane) struct IndicatorPanePass<'a, 'b> {
     pub start: usize,
     pub end: usize,
     pub partial_slot: Option<usize>,
+    /// The first indicator in a window paints the frame and the axis.
+    pub chrome: bool,
+    /// Stacked title row when several indicators share the window.
+    pub heading_row: usize,
+    /// Shared zero for this window. `None` keeps a linear scale.
+    pub zero_from_top: Option<f32>,
 }
 fn overlays(pass: &mut OverlayPass<'_, '_>) {
     let &DrawFrame {
@@ -91,5 +97,8 @@ fn pane(pass: &mut IndicatorPanePass<'_, '_>) {
         pass.start,
         pass.end,
         pass.partial_slot,
+        pass.chrome,
+        pass.heading_row,
+        pass.zero_from_top,
     );
 }

@@ -13,7 +13,9 @@
 use eframe::egui;
 use quantick_indicators::{InputSpec, InputValue, PlotSpec, Rgba8, SourceId};
 
-use crate::indicator_style::{MAX_PLOT_WIDTH_PX, MIN_PLOT_WIDTH_PX, ResolvedPlot, StyleOverride};
+use crate::indicator_style::{
+    LineKind, MAX_PLOT_WIDTH_PX, MIN_PLOT_WIDTH_PX, ResolvedPlot, StyleOverride,
+};
 use crate::theme;
 
 /// Drag sensitivity of a float input that declares no `step`.
@@ -23,7 +25,7 @@ const DEFAULT_FLOAT_DRAG_SPEED: f64 = 0.1;
 const NUMBER_FIELD_WIDTH_PX: f32 = 72.0;
 /// Size of the line preview at the end of a Style row, in pixels: long enough
 /// to read a width from, one text line tall so the row does not grow.
-const PLOT_PREVIEW_SIZE: egui::Vec2 = egui::vec2(44.0, 16.0);
+const PLOT_PREVIEW_SIZE: egui::Vec2 = egui::vec2(64.0, 16.0);
 /// How much of its colour a switched-off plot's preview keeps — enough to
 /// still be a line, faded enough to read as off, matching the legend dot.
 const PREVIEW_OFF_FADE: f32 = 0.4;
@@ -55,6 +57,7 @@ pub(crate) fn draw(
     plots: &[PlotSpec],
     style: &mut StyleOverride,
     presets: Option<&[String]>,
+    mates: Option<&[WindowMate]>,
 ) -> Intent {
     let palette = theme::get(ctx);
     let mut outcome = SettingsOutcome::Open;
@@ -109,15 +112,41 @@ pub(crate) fn draw(
                 }
                 ui.separator();
             }
+            if let Some(mates) = mates {
+                if let Some(join) = window_row(ui, slot_id, mates) {
+                    outcome = SettingsOutcome::JoinWindow(join);
+                }
+                ui.separator();
+            }
             let order = row_order(specs);
             egui::Grid::new("indicator-settings-grid")
                 .num_columns(2)
-                .spacing([12.0, 8.0])
+                .spacing([12.0, 4.0])
                 .show(ui, |ui| {
                     let mut current_section: Option<&str> = None;
-                    for &index in &order {
-                        let spec = &specs[index];
-                        let (section, label) = split_section(spec.title());
+                    let mut cursor = 0;
+                    while cursor < order.len() {
+                        let index = order[cursor];
+                        let (section, label) = split_section(specs[index].title());
+                        if let Some(space) = auto_space_pair(specs, &order, cursor) {
+                            changed |= edit_labeled(ui, session, specs, index, "Auto", true);
+                            changed |= edit_labeled(ui, session, specs, space, "Space", false);
+                            ui.end_row();
+                            cursor += 2;
+                            continue;
+                        }
+                        if reading_index(section) {
+                            let start = cursor;
+                            cursor += 1;
+                            while cursor < order.len()
+                                && split_section(specs[order[cursor]].title()).0 == section
+                            {
+                                cursor += 1;
+                            }
+                            changed |=
+                                draw_reading(ui, session, specs, &order[start..cursor], section);
+                            continue;
+                        }
                         if !section.is_empty() && current_section != Some(section) {
                             current_section = Some(section);
                             ui.label(
@@ -128,13 +157,9 @@ pub(crate) fn draw(
                             ui.label("");
                             ui.end_row();
                         }
-                        let dialog = session.state().dialog().unwrap();
-                        let mut value = dialog.draft[index].clone();
-                        changed |= input_row(ui, spec, &mut value, &dialog.committed[index], label);
-                        if value != session.state().dialog().unwrap().draft[index] {
-                            session.update(Intent::EditInput { index, value });
-                        }
+                        changed |= edit_input(ui, session, specs, index, label);
                         ui.end_row();
+                        cursor += 1;
                     }
                 });
             if specs.is_empty() {
@@ -193,7 +218,7 @@ fn draw_buttons(ui: &mut egui::Ui, previewed: bool, outcome: &mut SettingsOutcom
 }
 
 /// The Style tab: one row per declared plot — draw it, its colour, its width,
-/// and a preview of the line those two produce.
+/// its line type, and a preview of the stroke those produce.
 ///
 /// Writes straight through to the app-side [`StyleOverride`] rather than into
 /// a draft. Style needs no draft and no Apply: it is render-side, it costs a
@@ -203,7 +228,7 @@ fn draw_buttons(ui: &mut egui::Ui, previewed: bool, outcome: &mut SettingsOutcom
 fn draw_style(ui: &mut egui::Ui, plots: &[PlotSpec], style: &mut StyleOverride) -> bool {
     let mut changed = false;
     egui::Grid::new("indicator-style-grid")
-        .num_columns(4)
+        .num_columns(5)
         .spacing([10.0, 8.0])
         .show(ui, |ui| {
             for (index, spec) in plots.iter().enumerate() {
@@ -244,11 +269,25 @@ fn draw_style(ui: &mut egui::Ui, plots: &[PlotSpec], style: &mut StyleOverride) 
                     changed = true;
                 }
 
-                // What the two controls beside it add up to. A swatch alone
+                if matches!(
+                    spec.style,
+                    quantick_indicators::PlotStyle::Line
+                        | quantick_indicators::PlotStyle::StepLine
+                        | quantick_indicators::PlotStyle::Area
+                ) {
+                    if let Some(kind) = line_kind_combo(ui, index, resolved.line) {
+                        over.line = (kind != LineKind::Solid).then_some(kind);
+                        changed = true;
+                    }
+                } else {
+                    ui.label("");
+                }
+
+                // What the controls beside it add up to. A swatch alone
                 // says nothing about width, and a number alone says nothing
                 // about how thin 0.5 px looks over candles.
-                draw_plot_preview(ui, style.resolve(index, spec, None), visible);
                 style.set(index, over);
+                draw_plot_preview(ui, style.resolve(index, spec, None), visible);
                 ui.end_row();
             }
         });
@@ -257,7 +296,9 @@ fn draw_style(ui: &mut egui::Ui, plots: &[PlotSpec], style: &mut StyleOverride) 
     ui.add_space(4.0);
     if ui
         .add_enabled(!style.is_default(), egui::Button::new("Reset style"))
-        .on_hover_text("back to the default colours (the theme's, else the script's) and widths")
+        .on_hover_text(
+            "back to the default colours (the theme's, else the script's), widths and line types",
+        )
         .on_disabled_hover_text("already showing the defaults")
         .clicked()
     {
@@ -288,10 +329,38 @@ fn draw_plot_preview(ui: &mut egui::Ui, resolved: ResolvedPlot, visible: bool) {
         )
     };
     let y = rect.center().y;
-    ui.painter().line_segment(
-        [egui::pos2(rect.left(), y), egui::pos2(rect.right(), y)],
-        egui::Stroke::new(width, color),
-    );
+    let points = [egui::pos2(rect.left(), y), egui::pos2(rect.right(), y)];
+    let stroke = egui::Stroke::new(width, color);
+    match resolved.line.pattern(width) {
+        None => {
+            ui.painter().line_segment(points, stroke);
+        }
+        Some((dash, gap)) => {
+            for shape in egui::Shape::dashed_line(&points, stroke, dash, gap) {
+                ui.painter().add(shape);
+            }
+        }
+    }
+}
+
+/// Solid, dashed or dotted. `None` when the row was not touched.
+fn line_kind_combo(ui: &mut egui::Ui, index: usize, current: LineKind) -> Option<LineKind> {
+    let mut picked = None;
+    egui::ComboBox::from_id_salt(("plot-line", index))
+        .selected_text(current.label())
+        .width(78.0)
+        .show_ui(ui, |ui| {
+            for kind in [LineKind::Solid, LineKind::Dashed, LineKind::Dotted] {
+                if ui
+                    .selectable_label(kind == current, kind.label())
+                    .on_hover_text("line type")
+                    .clicked()
+                {
+                    picked = Some(kind);
+                }
+            }
+        });
+    picked
 }
 
 /// A numeric input with no declared range, drawn as a *field* rather than a
@@ -413,6 +482,196 @@ fn preset_row(
     });
 }
 
+/// Another pane indicator this one can share a window with.
+pub(crate) struct WindowMate {
+    pub slot: u64,
+    pub label: String,
+    /// Already drawn in this indicator's window.
+    pub shared: bool,
+}
+
+/// `Some(None)` is "own window". `Some(Some(slot))` joins that indicator.
+/// `None` means the row was not touched.
+fn window_row(ui: &mut egui::Ui, slot_id: u64, mates: &[WindowMate]) -> Option<Option<u64>> {
+    let palette = theme::get(ui.ctx());
+    let mut choice = None;
+    ui.horizontal(|ui| {
+        ui.label(
+            egui::RichText::new("Window")
+                .strong()
+                .color(palette.text_muted()),
+        );
+        let selected = mates
+            .iter()
+            .find(|mate| mate.shared)
+            .map(|mate| format!("With {}", mate.label))
+            .unwrap_or_else(|| "Own window".to_owned());
+        egui::ComboBox::from_id_salt(("indicator-window", slot_id))
+            .selected_text(selected)
+            .show_ui(ui, |ui| {
+                if ui
+                    .selectable_label(mates.iter().all(|mate| !mate.shared), "Own window")
+                    .on_hover_text("a pane of its own")
+                    .clicked()
+                {
+                    choice = Some(None);
+                }
+                for mate in mates {
+                    if ui
+                        .selectable_label(mate.shared, format!("With {}", mate.label))
+                        .on_hover_text(
+                            "same pane, one zero line; each indicator keeps its own scale, the axis shows the first",
+                        )
+                        .clicked()
+                    {
+                        choice = Some(Some(mate.slot));
+                    }
+                }
+            });
+    });
+    choice
+}
+
+/// `Auto` followed by `Space` is one row: the checkbox in front of the margin.
+fn auto_space_pair(specs: &[InputSpec], order: &[usize], cursor: usize) -> Option<usize> {
+    let next = *order.get(cursor + 1)?;
+    let auto = matches!(&specs[order[cursor]], InputSpec::Bool { title, .. } if title.eq_ignore_ascii_case("Auto"));
+    let space = matches!(
+        &specs[next],
+        InputSpec::Int { title, .. } | InputSpec::Float { title, .. }
+            if title.eq_ignore_ascii_case("Space")
+    );
+    (auto && space).then_some(next)
+}
+
+/// A section whose name is only a reading number (`1`, `2`, …). Those share
+/// one line for their checkboxes and keep the number in the gutter, instead
+/// of spending a row on the number alone.
+fn reading_index(section: &str) -> bool {
+    !section.is_empty() && section.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// Width of the reading number, in pixels. The rows under it leave the same
+/// gap so their labels line up with the checkboxes, not with the number.
+const READING_GUTTER_PX: f32 = 18.0;
+
+fn reading_gutter(ui: &mut egui::Ui, number: &str) {
+    let height = ui.spacing().interact_size.y;
+    if number.is_empty() {
+        ui.allocate_exact_size(egui::vec2(READING_GUTTER_PX, height), egui::Sense::hover());
+        return;
+    }
+    let palette = theme::get(ui.ctx());
+    ui.add_sized(
+        [READING_GUTTER_PX, height],
+        egui::Label::new(
+            egui::RichText::new(number)
+                .strong()
+                .color(palette.text_muted()),
+        ),
+    );
+}
+
+/// One numbered reading: the number sits on the checkbox line, every checkbox
+/// of that reading shares the line, and each other input keeps a line of its
+/// own under the same indent.
+fn draw_reading(
+    ui: &mut egui::Ui,
+    session: &mut UpdateSession<'_, Model>,
+    specs: &[InputSpec],
+    indices: &[usize],
+    number: &str,
+) -> bool {
+    let mut toggles = Vec::new();
+    let mut rest = Vec::new();
+    for &index in indices {
+        let label = split_section(specs[index].title()).1;
+        if matches!(specs[index], InputSpec::Bool { .. }) {
+            toggles.push((index, label));
+        } else {
+            rest.push((index, label));
+        }
+    }
+    let mut changed = false;
+    if toggles.is_empty() {
+        if let Some((index, label)) = rest.first().copied() {
+            reading_gutter(ui, number);
+            changed |= edit_labeled(ui, session, specs, index, label, false);
+            ui.end_row();
+            for (index, label) in rest.into_iter().skip(1) {
+                reading_gutter(ui, "");
+                changed |= edit_labeled(ui, session, specs, index, label, false);
+                ui.end_row();
+            }
+        }
+        return changed;
+    }
+    reading_gutter(ui, number);
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 16.0;
+        for (index, label) in toggles {
+            changed |= edit_labeled(ui, session, specs, index, label, true);
+        }
+    });
+    ui.end_row();
+    for (index, label) in rest {
+        reading_gutter(ui, "");
+        changed |= edit_labeled(ui, session, specs, index, label, false);
+        ui.end_row();
+    }
+    changed
+}
+
+/// An ordinary settings row: the label and the control are the grid's two columns.
+fn edit_input(
+    ui: &mut egui::Ui,
+    session: &mut UpdateSession<'_, Model>,
+    specs: &[InputSpec],
+    index: usize,
+    label: &str,
+) -> bool {
+    let (mut value, applied) = {
+        let dialog = session.state().dialog().expect("resolved editor");
+        (dialog.draft[index].clone(), dialog.committed[index].clone())
+    };
+    let changed = input_row(ui, &specs[index], &mut value, &applied, label, false);
+    if value != session.state().dialog().unwrap().draft[index] {
+        session.update(Intent::EditInput { index, value });
+    }
+    changed
+}
+
+/// Draws one input and writes a changed draft back. `beside_bool` puts a
+/// checkbox's words on the box itself so several of them fit one line. A
+/// reading's other inputs pass `false` from inside one grid cell, so the
+/// label and the control share that cell instead of taking two columns.
+fn edit_labeled(
+    ui: &mut egui::Ui,
+    session: &mut UpdateSession<'_, Model>,
+    specs: &[InputSpec],
+    index: usize,
+    label: &str,
+    beside_bool: bool,
+) -> bool {
+    let (mut value, applied) = {
+        let dialog = session.state().dialog().expect("resolved editor");
+        (dialog.draft[index].clone(), dialog.committed[index].clone())
+    };
+    let changed = if beside_bool {
+        ui.horizontal(|ui| input_row(ui, &specs[index], &mut value, &applied, label, true))
+            .inner
+    } else if matches!(specs[index], InputSpec::Bool { .. }) {
+        input_row(ui, &specs[index], &mut value, &applied, label, false)
+    } else {
+        ui.horizontal(|ui| input_row(ui, &specs[index], &mut value, &applied, label, false))
+            .inner
+    };
+    if value != session.state().dialog().unwrap().draft[index] {
+        session.update(Intent::EditInput { index, value });
+    }
+    changed
+}
+
 /// One label + widget row. The value enum always matches its spec variant
 /// (both come from the same declaration); a mismatch draws nothing rather
 /// than panicking a frame. Returns whether the value changed this frame —
@@ -422,13 +681,15 @@ fn preset_row(
 /// value: double-clicking a slider snaps back to it — the per-parameter
 /// undo a live preview owes the hand that slipped. `label` is the title
 /// with its section prefix stripped; widget ids keep using the full title,
-/// which is the stable name.
+/// which is the stable name. `beside_bool` draws a checkbox as one control
+/// (`show` next to the box) so a reading can put its toggles on one line.
 fn input_row(
     ui: &mut egui::Ui,
     spec: &InputSpec,
     value: &mut InputValue,
     applied: &InputValue,
     label: &str,
+    beside_bool: bool,
 ) -> bool {
     let palette = theme::get(ui.ctx());
     match (spec, value) {
@@ -527,9 +788,15 @@ fn input_row(
                 number_field(ui, drag, range_hint(*min, *max, |v: f64| format!("{v}"))).changed()
             }
         }
-        (InputSpec::Bool { .. }, InputValue::Bool(current)) => {
-            ui.label(label);
-            ui.checkbox(current, "").changed()
+        (InputSpec::Bool { title, .. }, InputValue::Bool(current)) => {
+            if beside_bool {
+                ui.push_id(title, |ui| ui.checkbox(current, label))
+                    .inner
+                    .changed()
+            } else {
+                ui.label(label);
+                ui.checkbox(current, "").changed()
+            }
         }
         (InputSpec::Color { .. }, InputValue::Color(current)) => {
             ui.label(label);

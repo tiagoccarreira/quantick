@@ -11,6 +11,15 @@ publish.workspace = true
 raw-window-handle = { workspace = true }
 tracing = { workspace = true }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+# The main display: the screen that holds the menu bar, so the window can
+# open there instead of on whichever display is active. Other targets link
+# nothing for this and answer `None`.
+core-graphics = { workspace = true }
+objc2 = { workspace = true }
+objc2-app-kit = { workspace = true }
+objc2-foundation = { workspace = true }
+
 [target.'cfg(windows)'.dependencies]
 # The Win32 window, subclass and version calls. Other targets link nothing:
 # every function here is a no-op or `None` there. The four areas beyond the

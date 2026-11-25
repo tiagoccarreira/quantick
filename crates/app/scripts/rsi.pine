@@ -3,4 +3,12 @@
 indicator("Relative Strength Index", overlay=false)
 len = input.int(14, "Length", minval=1, maxval=500)
 src = input.source(close, "Source")
+// The middle of these two sits on the shared zero of any other indicator
+// in the window. The pane still scales to the values it actually prints.
+upper = input.int(70, "Upper", minval=0, maxval=100)
+lower = input.int(30, "Lower", minval=0, maxval=100)
+// Auto centres the pane on the middle of Upper and Lower, leaving Space
+// beyond each limit. The trace still widens the scale when it goes past that.
+auto = input.bool(true, "Auto")
+space = input.int(10, "Space", minval=0)
 plot(ta.rsi(src, len), title="RSI", color=color.purple)

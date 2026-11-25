@@ -331,6 +331,24 @@ fn overlay_and_pane_filters_respect_state() {
     assert_eq!(views.visible_panes().count(), 1);
 }
 
+#[test]
+fn indicators_that_share_a_window_take_one_pane() {
+    let mut views = IndicatorViews::new();
+    let rsi = views.allocate_slot("script.rsi");
+    let macd = views.allocate_slot("script.macd");
+    let adx = views.allocate_slot("script.adx");
+    for slot in [rsi, macd, adx] {
+        views.apply(rebuilt(slot, descriptor(false, 1), vec![vec![1.0]]));
+    }
+    assert_eq!(views.visible_panes().count(), 3);
+    views.join_window(macd, rsi);
+    views.join_window(adx, rsi);
+    assert_eq!(views.visible_panes().count(), 1);
+    assert_eq!(views.window_members(rsi), vec![rsi, macd, adx]);
+    views.detach_window(adx);
+    assert_eq!(views.visible_panes().count(), 2);
+}
+
 /// A pane's scale belongs to the indicator, not to the slot's position on
 /// screen: removing one and adding another must not hand the newcomer a
 /// range someone set for a different series.

@@ -66,6 +66,44 @@ impl MarketStatus {
     }
 }
 
+/// One feed that can carry a symbol the trader searched for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DataSource {
+    pub feed_id: String,
+    pub venue: String,
+    pub chip: char,
+    pub kind: VenueKind,
+    pub user_added: bool,
+    pub bar: Option<String>,
+    pub context_bars: Vec<String>,
+    pub status: MarketStatus,
+    pub price: Option<String>,
+    pub price_dim: bool,
+    pub trades_per_s: Option<u32>,
+    pub tabs: Vec<OpenMarket>,
+    pub hover: Option<String>,
+}
+
+impl DataSource {
+    pub(super) fn from_row(row: &MarketRow) -> Self {
+        Self {
+            feed_id: row.feed_id.clone(),
+            venue: row.venue.clone(),
+            chip: row.chip,
+            kind: row.kind,
+            user_added: row.user_added,
+            bar: row.bar.clone(),
+            context_bars: row.context_bars.clone(),
+            status: row.status.clone(),
+            price: row.price.clone(),
+            price_dim: row.price_dim,
+            trades_per_s: row.trades_per_s,
+            tabs: row.tabs.clone(),
+            hover: row.hover.clone(),
+        }
+    }
+}
+
 /// One row of the list.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MarketRow {
@@ -91,6 +129,9 @@ pub struct MarketRow {
     /// The tabs showing this market, in strip order.
     pub tabs: Vec<OpenMarket>,
     pub hover: Option<String>,
+    /// Feeds that can carry this symbol. Empty on a browse row, which is
+    /// itself the only source. A typed query fills this, one entry per feed.
+    pub sources: Vec<DataSource>,
 }
 
 impl MarketRow {
@@ -109,6 +150,116 @@ impl MarketRow {
     #[must_use]
     pub fn rate_label(&self) -> Option<String> {
         self.trades_per_s.map(|rate| format!("{rate}/s"))
+    }
+
+    /// `feed_id` when this row can load it from a live feed.
+    #[must_use]
+    pub fn live_feed<'a>(&'a self, feed_id: &str) -> Option<&'a str> {
+        let live = |kind: VenueKind| kind != VenueKind::ComingSoon;
+        if self.sources.is_empty() {
+            return (self.feed_id == feed_id && live(self.kind)).then_some(self.feed_id.as_str());
+        }
+        self.sources.iter().find_map(|source| {
+            (source.feed_id == feed_id && live(source.kind)).then_some(source.feed_id.as_str())
+        })
+    }
+
+    /// Live feeds the trader can load this symbol from. A browse row with
+    /// no `sources` offers itself.
+    #[must_use]
+    pub fn offers(&self) -> Vec<(String, String)> {
+        let live = |kind: VenueKind| kind != VenueKind::ComingSoon;
+        if self.sources.is_empty() {
+            return live(self.kind)
+                .then(|| vec![(self.feed_id.clone(), self.venue.clone())])
+                .unwrap_or_default();
+        }
+        self.sources
+            .iter()
+            .filter(|source| live(source.kind))
+            .map(|source| (source.feed_id.clone(), source.venue.clone()))
+            .collect()
+    }
+
+    /// This row as `feed_id` carries it. An unknown feed leaves the row as it is.
+    #[must_use]
+    pub fn project(&self, feed_id: &str) -> Self {
+        let Some(source) = self.sources.iter().find(|source| source.feed_id == feed_id) else {
+            return self.clone();
+        };
+        let mut row = self.clone();
+        row.feed_id.clone_from(&source.feed_id);
+        row.venue.clone_from(&source.venue);
+        row.chip = source.chip;
+        row.kind = source.kind;
+        row.user_added = source.user_added;
+        row.bar.clone_from(&source.bar);
+        row.context_bars.clone_from(&source.context_bars);
+        row.status.clone_from(&source.status);
+        row.price.clone_from(&source.price);
+        row.price_dim = source.price_dim;
+        row.trades_per_s = source.trades_per_s;
+        row.tabs.clone_from(&source.tabs);
+        row.hover.clone_from(&source.hover);
+        row
+    }
+
+    /// Drop `feed_id` for `symbol` from this row. `true` when nothing remains.
+    pub(super) fn strip(&mut self, feed_id: &str, symbol: &str) -> bool {
+        if self.symbol != symbol {
+            return false;
+        }
+        let hit =
+            self.feed_id == feed_id || self.sources.iter().any(|source| source.feed_id == feed_id);
+        if !hit {
+            return false;
+        }
+        self.sources.retain(|source| source.feed_id != feed_id);
+        if self.feed_id != feed_id {
+            return false;
+        }
+        let Some(next) = self
+            .sources
+            .iter()
+            .find(|source| source.kind != VenueKind::ComingSoon)
+            .cloned()
+            .or_else(|| self.sources.first().cloned())
+        else {
+            return true;
+        };
+        self.apply(&next);
+        false
+    }
+
+    /// Mark the feed this tab already shows, including inside `sources`.
+    pub(super) fn note_this_tab(&mut self, feed_id: &str, symbol: &str) {
+        if self.symbol != symbol || self.status == MarketStatus::Add {
+            return;
+        }
+        if self.feed_id == feed_id {
+            self.status = MarketStatus::ThisTab;
+        }
+        for source in &mut self.sources {
+            if source.feed_id == feed_id && source.status != MarketStatus::Add {
+                source.status = MarketStatus::ThisTab;
+            }
+        }
+    }
+
+    fn apply(&mut self, source: &DataSource) {
+        self.feed_id.clone_from(&source.feed_id);
+        self.venue.clone_from(&source.venue);
+        self.chip = source.chip;
+        self.kind = source.kind;
+        self.user_added = source.user_added;
+        self.bar.clone_from(&source.bar);
+        self.context_bars.clone_from(&source.context_bars);
+        self.status.clone_from(&source.status);
+        self.price.clone_from(&source.price);
+        self.price_dim = source.price_dim;
+        self.trades_per_s = source.trades_per_s;
+        self.tabs.clone_from(&source.tabs);
+        self.hover.clone_from(&source.hover);
     }
 }
 
@@ -180,6 +331,7 @@ pub(super) fn catalog_row(world: &MarketWorld<'_>, market: &CatalogMarket) -> Op
         trades_per_s: None,
         tabs: Vec::new(),
         hover: None,
+        sources: Vec::new(),
     };
     if venue.kind == VenueKind::ComingSoon {
         row.status = MarketStatus::ComingSoon;
@@ -221,6 +373,7 @@ pub(super) fn replay_row(tab: &OpenMarket) -> MarketRow {
         trades_per_s: None,
         tabs: vec![tab.clone()],
         hover: None,
+        sources: Vec::new(),
     }
 }
 
@@ -242,5 +395,6 @@ pub(super) fn add_row(venue: &Venue, symbol: &str) -> MarketRow {
         trades_per_s: None,
         tabs: Vec::new(),
         hover: None,
+        sources: Vec::new(),
     }
 }

@@ -77,6 +77,8 @@ pub enum Intent {
     BarKind(String),
     BarSize(String),
     Workspace(String),
+    /// Load the selected symbol from this feed.
+    Source(String),
     Finish {
         escape: bool,
         scrim_clicked: bool,
@@ -179,6 +181,11 @@ impl crate::Model for Model {
             Intent::Workspace(name) => {
                 if let Some(p) = state.open.as_mut() {
                     p.set_workspace(&name);
+                }
+            }
+            Intent::Source(feed) => {
+                if let Some(p) = state.open.as_mut() {
+                    p.set_source(&feed);
                 }
             }
             Intent::Finish {

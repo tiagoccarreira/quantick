@@ -6,7 +6,8 @@
         "display",
         "data",
         "recording",
-        "agent_access"
+        "agent_access",
+        "connections"
       ],
       "type": "string"
     }

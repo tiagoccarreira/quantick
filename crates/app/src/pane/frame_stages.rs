@@ -556,44 +556,70 @@ impl<'a, 'f> HistoryStage<'a, 'f> {
             steps.reverse();
             steps
         });
-        for ((view, pane), gutter) in indicators
-            .visible_panes_mut()
-            .zip(&frame.areas.indicator_panes)
-            .zip(&frame.areas.pane_gutters)
-        {
+        let hosts = indicators.host_slots();
+        for (index, host) in hosts.into_iter().enumerate() {
+            let Some(pane) = frame.areas.indicator_panes.get(index) else {
+                break;
+            };
+            let Some(gutter) = frame.areas.pane_gutters.get(index).copied() else {
+                break;
+            };
+            let collapsed = pane.collapsed;
+            let pane_top = pane.rect.top();
+            let pane_bottom = pane.rect.bottom();
+            let members = indicators.window_members(host);
+            for member in &members {
+                let Some(view) = indicators.view_mut(*member) else {
+                    continue;
+                };
+                if indicator_render::centres_scale(view) {
+                    view.scale.reset();
+                }
+                view.last_auto = indicator_render::pane_auto_range(view, frame.start, frame.end);
+            }
+            let zero_from_top = indicators.shared_zero_for(host);
             let pane_frame = indicator_render::PaneFrame {
                 rect: egui::Rect::from_min_max(
-                    egui::pos2(frame.history_rect.left(), pane.rect.top()),
-                    egui::pos2(frame.history_rect.right(), pane.rect.bottom()),
+                    egui::pos2(frame.history_rect.left(), pane_top),
+                    egui::pos2(frame.history_rect.right(), pane_bottom),
                 ),
                 lane: lane.map(|lane| indicator_render::LaneFrame {
                     rect: egui::Rect::from_min_max(
-                        egui::pos2(lane.divider, pane.rect.top()),
-                        egui::pos2(frame.chart_rect.right(), pane.rect.bottom()),
+                        egui::pos2(lane.divider, pane_top),
+                        egui::pos2(frame.chart_rect.right(), pane_bottom),
                     ),
                     start_ms: lane.start_ms,
                     end_ms: lane.end_ms,
                     steps: &lane_steps,
                 }),
-                gutter: *gutter,
+                gutter,
                 background: frame.canvas_background,
                 grid,
-                collapsed: pane.collapsed,
+                collapsed,
             };
-            self.renderers.indicator_pane(&mut IndicatorPanePass {
-                painter: frame.painter,
-                frame: &pane_frame,
-                view,
-                plot_x: &plot_x,
-                start: frame.start,
-                end: frame.end,
-                partial_slot: frame.partial_visible.map(|_| frame.closed_total),
-            });
-            if view.mouse_vertical_line
-                && !pane.collapsed
-                && let Some(x) = guide_x
-            {
-                crate::indicator_guide::paint(frame.painter, pane_frame.rect, x);
+            for (row, member) in members.into_iter().enumerate() {
+                let Some(view) = indicators.view_mut(member) else {
+                    continue;
+                };
+                self.renderers.indicator_pane(&mut IndicatorPanePass {
+                    painter: frame.painter,
+                    frame: &pane_frame,
+                    view,
+                    plot_x: &plot_x,
+                    start: frame.start,
+                    end: frame.end,
+                    partial_slot: frame.partial_visible.map(|_| frame.closed_total),
+                    chrome: row == 0,
+                    heading_row: row,
+                    zero_from_top,
+                });
+                if row == 0
+                    && view.mouse_vertical_line
+                    && !collapsed
+                    && let Some(x) = guide_x
+                {
+                    crate::indicator_guide::paint(frame.painter, pane_frame.rect, x);
+                }
             }
         }
     }

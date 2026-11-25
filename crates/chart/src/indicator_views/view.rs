@@ -124,6 +124,12 @@ pub struct IndicatorView {
     /// so it needs the range the renderer actually used — the same handshake
     /// the app's `PaneFrame::auto_range` performs for the candles.
     pub last_auto: Option<(f64, f64)>,
+    /// Shared window. `0` is a window of this indicator's own.
+    ///
+    /// Equal non-zero ids draw in one pane. Each indicator still fits its own
+    /// values, so a 0–100 oscillator and a MACD do not flatten each other.
+    /// The pane's axis numbers belong to the first indicator in the window.
+    pub window: u32,
 }
 
 impl IndicatorView {

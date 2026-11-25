@@ -102,3 +102,18 @@ fn a_saved_sliver_reopens_on_something_the_trader_can_grab() {
     assert_eq!(restore_size(Some([1280.0, 720.0])), [1280.0, 720.0]);
     assert_eq!(restore_size(None), DEFAULT_WINDOW_PX);
 }
+
+/// The window opens centered on the display that holds the menu bar, not on
+/// whichever display happens to be active.
+#[cfg(target_os = "macos")]
+#[test]
+fn the_window_opens_on_the_main_screen() {
+    let launch = LaunchConfig::default();
+    let options = launch.native_options(None);
+    let Some(area) = quantick_platform::primary_work_area() else {
+        return;
+    };
+    let [x, y] = quantick_platform::center_in(area, launch.window_size(None)).expect("place");
+    let pos = options.viewport.position.expect("main screen");
+    assert!((pos.x - x).abs() < 0.5 && (pos.y - y).abs() < 0.5);
+}

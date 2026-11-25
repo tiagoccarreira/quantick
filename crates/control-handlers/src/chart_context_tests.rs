@@ -62,6 +62,7 @@ fn window() -> FakeWindow {
     tab.panes.push(pane);
     let mut window = FakeWindow::new(vec![tab]);
     let ema = SavedIndicator {
+        window: 0,
         kind: SavedKind::native("native.ema"),
         hidden: true,
         mouse_vertical_line: false,

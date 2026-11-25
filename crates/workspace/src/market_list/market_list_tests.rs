@@ -201,12 +201,48 @@ fn a_typed_query_is_one_markets_group_kept_together_by_the_asset_key() {
     assert_eq!(headings(&listing), [MARKETS_GROUP]);
     assert_eq!(
         symbols(&listing.groups[0]),
-        [
-            ("binance", "BTCUSDT"),
-            ("bybit", "BTCUSDT"),
-            ("hyperliquid", "BTC")
-        ],
-        "rows sharing an asset key sit together, in the order the asset first appears"
+        [("binance", "BTCUSDT"), ("hyperliquid", "BTC")],
+        "one row per symbol; feeds that share it sit on that row"
+    );
+    assert_eq!(
+        listing.groups[0].rows[0]
+            .sources
+            .iter()
+            .map(|source| source.feed_id.as_str())
+            .collect::<Vec<_>>(),
+        ["binance", "bybit"]
+    );
+}
+
+#[test]
+fn enter_loads_the_source_the_trader_picked_for_a_searched_symbol() {
+    let mut venues = venues();
+    venues.push(venue(
+        "metatrader-server",
+        "MT5 VPS Server",
+        'V',
+        VenueKind::Live,
+        Some("tick:50"),
+    ));
+    let mut markets = markets();
+    markets.push(market("metatrader-server", "WINZ26", "WIN*"));
+    let fixture = Fixture {
+        venues,
+        markets,
+        open: Vec::new(),
+        recent: RecentMarkets::default(),
+    };
+    let listing = fixture.list("winz26");
+    assert_eq!(symbols(&listing.groups[0]), [("b3", "WINZ26")]);
+    let mut palette = MarketPalette::default();
+    palette.set_query("winz26");
+    palette.set_source("metatrader-server");
+    let Some(PaletteIntent::Open(choice)) = palette.submit(&listing, false) else {
+        panic!("enter opens");
+    };
+    assert_eq!(
+        (choice.feed_id.as_str(), choice.symbol.as_str()),
+        ("metatrader-server", "WINZ26")
     );
 }
 
@@ -268,16 +304,23 @@ fn no_match_heads_the_query_and_offers_one_add_row_per_venue_that_could_list_it(
     let rows = &listing.groups[0].rows;
     assert_eq!(
         symbols(&listing.groups[0]),
-        [
-            ("binance", "SOLUSDT"),
-            ("hyperliquid", "SOLUSDT"),
-            ("b3", "SOLUSDT")
-        ],
-        "a coming-soon venue cannot list anything yet"
+        [("binance", "SOLUSDT")],
+        "one row, and a coming-soon venue cannot list anything yet"
+    );
+    assert_eq!(
+        rows[0]
+            .sources
+            .iter()
+            .map(|source| source.feed_id.as_str())
+            .collect::<Vec<_>>(),
+        ["binance", "hyperliquid", "b3"]
     );
     assert!(rows.iter().all(|row| row.status == MarketStatus::Add));
     assert_eq!(
-        (rows[0].bar.as_deref(), rows[2].bar.as_deref()),
+        (
+            rows[0].sources[0].bar.as_deref(),
+            rows[0].sources[2].bar.as_deref()
+        ),
         (Some("tick:50"), None),
         "an add row opens on its venue's bar, or none"
     );
