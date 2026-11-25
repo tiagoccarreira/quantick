@@ -583,12 +583,8 @@ set_tier "$root/wt" ""
 run "a code-review and full CI make the branch ready" \
     pr-gate "$(json_bash "$root/wt" "gh pr ready 42")" silent
 
-# The advisory rides a pass rather than replacing a decision, and the pull
-# request it asks about is the one the command named. A stub calculator here
-# on purpose: what is under test is the wiring — that `gh pr ready 42` arrives
-# as `--pr 42` and a creation arrives without one — and the real calculator
-# answers about a diff instead of about its arguments. The cases above cover
-# what it says.
+# Ready and create use the same branch measurement. Neither asks the PR
+# to append a ledger row, so the stub's final argument is always the branch.
 mkdir -p "$root/wt/tools/read_cost"
 cat > "$root/wt/tools/read_cost/report.py" <<'STUB'
 import json
@@ -596,9 +592,8 @@ import sys
 
 print(json.dumps("read-cost stub saw " + " ".join(sys.argv[1:])))
 STUB
-run "the advisory rides a passing gate and names the pull request" \
-    pr-gate "$(json_bash "$root/wt" "gh pr ready 42")" context "--pr 42"
-# No `--pr` at all, not an empty one: the argument ends the stub's line.
+run "readiness advises without a per-PR ledger argument" \
+    pr-gate "$(json_bash "$root/wt" "gh pr ready 42")" context '--branch feat/x"'
 run "a creation names no pull request to the advisory" \
     pr-gate "$(json_bash "$root/wt" "gh pr create --draft --fill")" context '--branch feat/x"'
 rm -rf "$root/wt/tools"
@@ -979,6 +974,48 @@ run "guard-watch: silent outside a repository" \
 
 rm -rf "$root/wt/target"
 
+# --- machine-check ----------------------------------------------------------
+#
+# The environment is the fixture here: CARGO_HOME points at a directory this
+# suite owns, so the developer's real cargo config can neither pass nor fail a
+# case. CARGO_BUILD_JOBS is cleared for the same reason and restored after.
+
+machine_saved_home=${CARGO_HOME-}
+machine_saved_home_set=${CARGO_HOME+x}
+machine_saved_jobs=${CARGO_BUILD_JOBS-}
+machine_saved_jobs_set=${CARGO_BUILD_JOBS+x}
+unset CARGO_BUILD_JOBS
+CARGO_HOME="$root/cargo-home"
+export CARGO_HOME
+mkdir -p "$CARGO_HOME"
+machine_start='{"hook_event_name":"SessionStart","source":"startup"}'
+
+run "machine-check: speaks when cargo has no config" \
+    machine-check "$machine_start" context "tools/dev_machine/setup.ps1"
+
+run "machine-check: asks for the user's consent" \
+    machine-check "$machine_start" context "consent"
+
+printf '[net]\nretry = 3\n# jobs = 4 is not a setting\n' > "$CARGO_HOME/config.toml"
+run "machine-check: speaks when the config has no jobs key" \
+    machine-check "$machine_start" context "build.jobs"
+
+printf '[build]\njobs = 8\n' > "$CARGO_HOME/config.toml"
+run "machine-check: silent once config.toml caps jobs" \
+    machine-check "$machine_start" silent
+
+rm -f "$CARGO_HOME/config.toml"
+printf '[build]\n  jobs=6\n' > "$CARGO_HOME/config"
+run "machine-check: reads the legacy config file too" \
+    machine-check "$machine_start" silent
+
+rm -f "$CARGO_HOME/config"
+CARGO_BUILD_JOBS=4 run "machine-check: silent when the environment caps jobs" \
+    machine-check "$machine_start" silent
+
+if [ -n "$machine_saved_home_set" ]; then CARGO_HOME=$machine_saved_home; export CARGO_HOME; else unset CARGO_HOME; fi
+if [ -n "$machine_saved_jobs_set" ]; then CARGO_BUILD_JOBS=$machine_saved_jobs; export CARGO_BUILD_JOBS; fi
+
 # --- the gate must judge the command, not the prose around it ---------------
 #
 # Both cases below blocked or misjudged real work the first time these hooks
@@ -1150,11 +1187,13 @@ else
             ;;
     esac
 
+    # One per Codex hook: worktree-guard, pr-gate, commit-reminder, guard-watch, machine-check.
+    codex_hook_count=5
     windows_commands=$(grep -c -- '"commandWindows"' "$codex_hooks")
-    if [ "$windows_commands" -eq 4 ]; then
+    if [ "$windows_commands" -eq "$codex_hook_count" ]; then
         passed=$((passed + 1))
     else
-        printf 'FAIL Codex hooks define %s Windows commands, expected 4\n' "$windows_commands"
+        printf 'FAIL Codex hooks define %s Windows commands, expected %s\n' "$windows_commands" "$codex_hook_count"
         failed=$((failed + 1))
     fi
 
@@ -1164,14 +1203,14 @@ else
     # Each command must also hand the guardrail's exit code back.
     nested_shells=$(grep -c -- '"commandWindows": "powershell' "$codex_hooks")
     forwarded_exits=$(grep -c -- '"commandWindows": .*exit \$LASTEXITCODE",' "$codex_hooks")
-    if [ "$nested_shells" -eq 0 ] && [ "$forwarded_exits" -eq 4 ]; then
+    if [ "$nested_shells" -eq 0 ] && [ "$forwarded_exits" -eq "$codex_hook_count" ]; then
         passed=$((passed + 1))
     else
-        printf 'FAIL Codex Windows hooks nest PowerShell (%s) or drop the exit code (%s of 4 forward it)\n' "$nested_shells" "$forwarded_exits"
+        printf 'FAIL Codex Windows hooks nest PowerShell (%s) or drop the exit code (%s of %s forward it)\n' "$nested_shells" "$forwarded_exits" "$codex_hook_count"
         failed=$((failed + 1))
     fi
 
-    for mode in worktree-guard pr-gate commit-reminder guard-watch; do
+    for mode in worktree-guard pr-gate commit-reminder guard-watch machine-check; do
         if grep -qF -- '.claude/hooks/guardrails.sh' "$codex_hooks" &&
             grep -qF -- "$mode" "$codex_hooks"; then
             passed=$((passed + 1))

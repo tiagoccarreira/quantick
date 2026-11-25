@@ -20,6 +20,9 @@ cargo build --workspace
 cargo test --workspace
 ```
 
+Running several agents or builds at once? Cap cargo's jobs on your machine
+first: [docs/dev-machine.md](docs/dev-machine.md).
+
 ## Workflow
 
 Every change follows the same loop — including changes by the maintainer:
@@ -32,12 +35,14 @@ Every change follows the same loop — including changes by the maintainer:
 
 ## Verification loop (mandatory)
 
-Code commits require all four below. For prose-only changes and evidence reuse,
+Code commits require formatting, linting, building and testing. For prose-only changes and evidence reuse,
 follow [the delivery contract](docs/workflow/delivery.md#validation-follows-changed-inputs).
 Full final-head CI remains mandatory for every PR:
 
 ```sh
 cargo fmt --all -- --check
+# Macro-generated module declarations require explicit rustfmt inputs.
+find crates/control-schema/src crates/control-handlers/src -name '*.rs' -type f -exec rustfmt --edition 2024 --check {} +
 cargo clippy --workspace --all-targets
 cargo build --workspace
 cargo test --workspace
@@ -62,7 +67,13 @@ A ratchet raise is a new file in the baseline's `.d/` directory named for the
 branch (`crates/guards/app-lines-baseline.d/<branch>.txt` holding
 `crates/app +N`, `!budget +N` and a comment saying why), never an edit to the
 baseline, so two open branches cannot conflict on it; `--tighten` writes its
-cuts there the same way. Update a branch with
+cuts there the same way. PR aggregate guards compare measured growth with the
+merge base through `python tools/ci/ratchet_delta.py --base origin/main`.
+Shrinking aggregates need no baseline edit. Existing fragments cannot be edited;
+`cargo run -p quantick-guards -- --tighten --fold` consolidates them into
+downward baselines and deletes the consumed fragments. Folding is a plain rewrite;
+restore affected baseline and fragment files from Git after an interrupted write.
+The per-file size ceiling and context budget remain absolute. Update a branch with
 `sh tools/merge_main.sh`: it regenerates the hook registry instead of leaving
 it for a hand merge.
 

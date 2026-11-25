@@ -155,6 +155,11 @@ pub struct SavedDrawing {
     pub color: [u8; 4],
     pub width_px: f64,
     pub fill_alpha: u8,
+    /// The look is the tool's factory look, worn in the factory ink of the
+    /// ground of the pane it sits on. Absent is a saved or the trader's own
+    /// look, which a mark from before the flag keeps, so nothing repaints it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub follows_ground: bool,
     #[serde(default)]
     pub locked: bool,
     #[serde(default)]
@@ -208,6 +213,41 @@ impl SavedDrawing {
         self.shared
             && !self.points.is_empty()
             && self.points.iter().all(|point| point.time_ms.is_some())
+    }
+
+    /// The test fixture: a horizontal line at `price`, dated at 1 000 ms on
+    /// bar 3, every optional field absent. Tests override fields with struct
+    /// update instead of writing the whole record.
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn level(price: f64) -> Self {
+        Self {
+            durable_identity: None,
+            id: None,
+            tool: "horizontal-line".to_owned(),
+            name: None,
+            author: None,
+            points: vec![SavedPoint {
+                time_ms: Some(1_000),
+                price,
+                bar: 3.0,
+            }],
+            band: SavedBand::Price,
+            color: [255, 200, 0, 255],
+            width_px: 1.5,
+            fill_alpha: 0,
+            follows_ground: false,
+            locked: false,
+            hidden: false,
+            magnet: false,
+            shared: false,
+            layout: None,
+            all_windows: false,
+            payload: None,
+            text: None,
+            origin: None,
+            bars: None,
+        }
     }
 }
 

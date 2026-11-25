@@ -317,7 +317,7 @@ impl ChartPane {
                 layout: self.layout_id().map(|id| id.0),
             },
             projection: self.drawing_projection(),
-            surface: self.surface(),
+            canvas: self.drawings.canvas(),
         }
     }
 
@@ -353,7 +353,8 @@ impl ChartPane {
         let spec = spec.into();
         let selector = SpecSelector::new(spec);
 
-        let drawings = Drawings::default();
+        let lit = orderflow.as_ref().map(|of| of.settings_panel.lights_on());
+        let drawings = Drawings::on_canvas(quantick_appearance::ChartSurface::pane(lit).into());
         let model = quantick_chart_interaction::pane::Model {
             selection: drawings.selection_handle(),
             ..Default::default()
@@ -764,7 +765,6 @@ impl ChartPane {
             },
             parked_position: hand.map(|hand| hand.1),
         };
-        let surface = self.surface();
         let placement = gesture_input::update_placement(
             &mut self.gestures,
             &mut self.drawings,
@@ -787,7 +787,6 @@ impl ChartPane {
             options,
             gesture::PlacementDefaults {
                 presets: chrome.presets,
-                surface,
                 repeat: chrome.toolrail.repeat(),
             },
         );
@@ -1044,7 +1043,6 @@ impl ChartPane {
                 else {
                     return;
                 };
-                let surface = self.surface();
                 let completion = self.gestures.place_point(
                     &mut self.drawings,
                     tool,
@@ -1052,7 +1050,6 @@ impl ChartPane {
                     point,
                     gesture::PlacementDefaults {
                         presets: chrome.presets,
-                        surface,
                         repeat: chrome.toolrail.repeat(),
                     },
                 );

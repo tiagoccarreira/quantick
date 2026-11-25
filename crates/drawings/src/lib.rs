@@ -30,6 +30,7 @@ pub mod presets;
 pub mod text;
 pub mod text_scale;
 mod text_zoom;
+pub use text_scale::TextSpacing;
 pub use text_zoom::NoteDisplay;
 
 mod clipboard;
@@ -68,6 +69,7 @@ pub use family::{
 };
 pub use geometry::{distance_to_segment, level_with, off_line_by, pos2, unit_normal, vec2};
 mod layout_scope;
+mod look;
 mod pane_sync;
 mod saved;
 pub use layout_scope::retarget_layout;
@@ -123,6 +125,16 @@ pub trait ToolCatalog: Copy + PartialEq + std::fmt::Debug {
     }
     /// The band a mark whose first anchor landed in `band` belongs to.
     fn band_for(self, band: &DrawingBand) -> DrawingBand;
+    /// The payload a mark's anchors moving from `before` to `after` leave
+    /// behind; `None` keeps it.
+    fn reanchored_payload(
+        self,
+        _payload: &dyn DrawingPayload,
+        _before: &[ChartPoint],
+        _after: &[ChartPoint],
+    ) -> Option<Box<dyn DrawingPayload>> {
+        None
+    }
 }
 
 /// A point (or an offset) in screen pixels, `x` rightwards and `y`

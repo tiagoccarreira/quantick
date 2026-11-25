@@ -947,7 +947,7 @@ fn pushing_the_chart_left_clears_a_window_and_keeps_the_series_on_screen() {
 fn candle_appearance_change_is_render_only() {
     let (mut app, _evt_tx, mut cmd_rx, _book_tx) = test_app();
     take_capture_start(&mut cmd_rx);
-    let capture_epoch = app.active_tab().link.book_capture_epoch;
+    let capture_epoch = app.active_tab().link.book.capture_epoch;
     let bar_spec = *app.active_tab().flow_pane.series.state.spec();
 
     app.runtime.style.apply_preset(CandlePreset::OutlineOnly);
@@ -960,7 +960,7 @@ fn candle_appearance_change_is_render_only() {
 
     assert_eq!(app.active_tab().flow_pane.series.state.spec(), &bar_spec);
     assert!(app.active_tab().tape().enabled());
-    assert_eq!(app.active_tab().link.book_capture_epoch, capture_epoch);
+    assert_eq!(app.active_tab().link.book.capture_epoch, capture_epoch);
     assert!(
         matches!(cmd_rx.try_recv(), Err(mpsc::error::TryRecvError::Empty)),
         "appearance changes must not restart or reconfigure market data"
@@ -978,31 +978,12 @@ fn a_restored_bar_rule_moves_the_selector_that_edits_it() {
             true,
             None,
             0,
-            vec![ui_state::SavedTab {
-                candle_styles: Vec::new(),
-                feed: "binance".to_owned(),
-                symbol: "TESTUSDT".to_owned(),
-                layout: crate::config::DeclaredLayout::Flow,
-                split_fraction: None,
-                context_collapsed: false,
-                flow_collapsed: false,
-                context_heights: vec![],
-                context_panes_collapsed: vec![],
-                focus: None,
-                focus_slot: 0,
-                context_bars: vec![],
-                flow_layout: None,
-                context_layouts: vec![],
-                flow_bars: "tick:377".to_owned(),
-                time_bars: None,
-                flow_legend_collapsed: false,
-                time_legend_collapsed: false,
-                workspace: None,
-                protected_default: false,
-                workspace_parked: Default::default(),
-                workspace_copy: None,
-                orderflow_panel: Default::default(),
-            }],
+            vec![ui_state::SavedTab::new(
+                "binance",
+                "TESTUSDT",
+                crate::config::DeclaredLayout::Flow,
+                "tick:377",
+            )],
             None,
         ));
     let pane = &app.active_tab().flow_pane;

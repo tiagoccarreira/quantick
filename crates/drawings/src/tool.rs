@@ -169,7 +169,7 @@ pub trait MarkTool: Sync {
         _payload: &dyn DrawingPayload,
         anchors: PxRect,
         chart: PxRect,
-        _px_per_bar: f32,
+        _spacing: crate::TextSpacing,
     ) -> PxRect {
         self.painted_bounds(anchors, chart)
     }
@@ -382,6 +382,24 @@ pub trait MarkTool: Sync {
     ) -> Option<Box<dyn DrawingPayload>> {
         None
     }
+    /// The payload anchors moving from `before` to `after` leave behind,
+    /// whatever moved them — a handle, a body drag, a nudge, a linked pane:
+    /// a position keeps its projected leg where the trader left it. `None`
+    /// (the default) keeps the payload as it is.
+    fn reanchored_payload(
+        &self,
+        _payload: &dyn DrawingPayload,
+        _before: &[crate::ChartPoint],
+        _after: &[crate::ChartPoint],
+    ) -> Option<Box<dyn DrawingPayload>> {
+        None
+    }
+    /// Why these anchors make no object of this tool, for a placement that
+    /// arrives whole (a named call, a quick-range action) to refuse before
+    /// anything is placed. `None` (the default) places them.
+    fn placement_refusal(&self, _anchors: &[crate::ChartPoint]) -> Option<&'static str> {
+        None
+    }
     /// The hint a grab on handle `handle` announces when it is narrower than
     /// a free reshape. `None` (the default) is the plain resize cursor.
     fn handle_hint(&self, _handle: usize) -> Option<PointerHint> {
@@ -541,9 +559,9 @@ impl DrawingTool {
         payload: &dyn DrawingPayload,
         anchors: PxRect,
         chart: PxRect,
-        px_per_bar: f32,
+        spacing: crate::TextSpacing,
     ) -> PxRect {
-        self.0.content_bounds(payload, anchors, chart, px_per_bar)
+        self.0.content_bounds(payload, anchors, chart, spacing)
     }
 
     /// See [`MarkTool::axis_levels`].
@@ -854,6 +872,12 @@ impl DrawingTool {
             .drag_payload_handle(chart_rect, points, handle, to, ctxt)
     }
 
+    /// See [`MarkTool::placement_refusal`].
+    #[must_use]
+    pub fn placement_refusal(self, anchors: &[crate::ChartPoint]) -> Option<&'static str> {
+        self.0.placement_refusal(anchors)
+    }
+
     #[must_use]
     pub fn hit_test(
         self,
@@ -958,5 +982,13 @@ impl crate::ToolCatalog for DrawingTool {
     }
     fn band_for(self, band: &DrawingBand) -> DrawingBand {
         Self::band_for(self, band)
+    }
+    fn reanchored_payload(
+        self,
+        payload: &dyn DrawingPayload,
+        before: &[crate::ChartPoint],
+        after: &[crate::ChartPoint],
+    ) -> Option<Box<dyn DrawingPayload>> {
+        self.0.reanchored_payload(payload, before, after)
     }
 }

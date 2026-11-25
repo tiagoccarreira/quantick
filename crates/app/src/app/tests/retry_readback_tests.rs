@@ -873,8 +873,9 @@ fn replay_plan() -> Vec<(&'static str, u32, Value, Readback)> {
             Readback::Moves,
         ),
         ("workspace.save_to", 1, json!({}), Readback::Stays),
-        // Refused since revert left the menus: nothing moves.
+        // A clean tab has nothing to revert or undo: nothing moves.
         ("workspace.revert", 1, json!({}), Readback::Stays),
+        ("workspace.revert.undo", 1, json!({}), Readback::Stays),
         (
             "workspace.autosave.set",
             1,
@@ -1705,7 +1706,9 @@ fn every_reachable_forbidden_row_refuses_a_key_before_the_application() {
             | "annotate.fib_projection.create"
             | "annotate.rectangle.create"
             | "annotate.trend_line.create"
-            | "annotate.horizontal_levels.create" => json!({ "anchors": fib_anchors }),
+            | "annotate.horizontal_levels.create"
+            | "annotate.long_position.create"
+            | "annotate.short_position.create" => json!({ "anchors": fib_anchors }),
             "annotate.parallel_channel.create" => {
                 json!({ "anchors": [fib_anchors[0].clone(), fib_anchors[1].clone(), fib_anchors[0].clone()] })
             }
